@@ -8,10 +8,11 @@ import androidx.activity.compose.setContent
 import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
+import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.PlayerView
 import eyevinn.com.client.sdk.android.analytics.AnalyticsEventSender
 import eyevinn.com.client.sdk.android.ui.theme.MyApplicationTheme
@@ -23,7 +24,9 @@ class MainActivity : ComponentActivity() {
 
     private val analyticsSender = AnalyticsEventSender()
     private lateinit var player: ExoPlayer
-
+    private var loadedEventSent = false
+    private var bufferingEventOngoing = false
+    private var seekedEventOngoing = false
     private val heartbeatHandler = Handler(Looper.getMainLooper())
     private val heartbeatIntervalMs = 30_000L
     private val heartbeatRunnable = object : Runnable {
@@ -35,57 +38,100 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         analyticsSender.sendInitEvent(0L)
-        analyticsSender.sendMetadataEvent(false, "Eyevinn Event-sink Android App")
+        analyticsSender.sendMetadataEvent(
+            isLive = false,
+            contentTitle = "Eyevinn Event-sink Android App",
+            deviceType = "Android player"
+        )
 
         player = ExoPlayer.Builder(this).build().apply {
-            analyticsSender.sendLoadingEvent()
-            setMediaItem(MediaItem.fromUri(MEDIA_URL))
-            prepare()
-        }
-
-        player.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying) {
-                    analyticsSender.sendPlayingEvent(player.currentPosition, player.duration)
-                } else {
-                    analyticsSender.sendPausedEvent(player.currentPosition, player.duration)
-                }
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                when (playbackState) {
-                    Player.STATE_BUFFERING -> {
-                        analyticsSender.sendBufferingEvent(player.currentPosition, player.duration)
-                    }
-                    Player.STATE_READY -> {
-                        if (player.playWhenReady) {
-                            analyticsSender.sendPlayingEvent(player.currentPosition, player.duration)
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    when (playbackState) {
+                        Player.STATE_BUFFERING -> {
+                            analyticsSender.sendBufferingEvent(currentPosition, duration)
+                            bufferingEventOngoing = true
+                        }
+                        Player.STATE_READY -> {
+                            if (bufferingEventOngoing) {
+                                analyticsSender.sendBufferedEvent(currentPosition, duration)
+                                bufferingEventOngoing = false
+                            }
+                            // Send "loaded" event once, when first ready
+                            if (!loadedEventSent) {
+                                analyticsSender.sendLoadedEvent()
+                                loadedEventSent = true
+                            }
+                            if (playWhenReady) {
+                                analyticsSender.sendPlayingEvent(currentPosition, duration)
+                            }
+                            if (!seekedEventOngoing) {
+                                analyticsSender.sendLoadedEvent()
+                                loadedEventSent = true
+                            }
+                        }
+                        Player.STATE_ENDED -> {
+                            analyticsSender.sendStoppedEvent(
+                                currentPosition,
+                                duration,
+                                "Playback ended"
+                            )
                         }
                     }
-                    Player.STATE_ENDED -> {
-                        analyticsSender.sendStoppedEvent(
-                            player.currentPosition,
-                            player.duration,
-                            "Playback ended"
-                        )
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (isPlaying) {
+                        analyticsSender.sendPlayingEvent(currentPosition, duration)
+                    } else {
+                        analyticsSender.sendPausedEvent(currentPosition, duration)
                     }
                 }
-            }
 
-            override fun onPositionDiscontinuity(
-                oldPosition: Player.PositionInfo,
-                newPosition: Player.PositionInfo,
-                reason: Int
-            ) {
-                if (reason == Player.DISCONTINUITY_REASON_SEEK) {
-                    analyticsSender.sendSeekingEvent(player.currentPosition, player.duration)
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int
+                ) {
+                    if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                        analyticsSender.sendSeekingEvent(currentPosition, duration)
+                    }
                 }
-            }
-        })
+
+                 fun onSeekProcessed() {
+                    analyticsSender.sendSeekedEvent(currentPosition, duration)
+                }
+            })
+
+            addAnalyticsListener(object : AnalyticsListener {
+                override fun onVideoInputFormatChanged(
+                    eventTime: AnalyticsListener.EventTime,
+                    format: Format,
+                    decoderReuseEvaluation: DecoderReuseEvaluation?
+                ) {
+                    val bitrateKbps = format.bitrate / 1000
+                    val width = format.width
+                    val height = format.height
+
+                    analyticsSender.sendBitrateChangedEvent(
+                        currentPosition,
+                        duration,
+                        bitrateKbps,
+                        width,
+                        height
+                    )
+                }
+            })
+        }
+
+        analyticsSender.sendLoadingEvent()
+        player.setMediaItem(MediaItem.fromUri(MEDIA_URL))
+        player.prepare()
 
         setContent {
             MyApplicationTheme {
