@@ -66,7 +66,7 @@ Add the following permissions to your `AndroidManifest.xml`:
 
 ```kotlin
 // Initialize SDK
-val videoAnalyticsSDK = VideoAnalyticsSDK.Builder(context)
+val videoAnalyticsSDK = EyevinnVideoAnalyticsSDK.Builder(context)
     .setContentTitle("My Video")
     .setEventSinkUrl("https://your-analytics-endpoint.com")
     .build()
@@ -91,7 +91,7 @@ override fun onDestroy() {
 
 ```kotlin
 @Composable
-fun VideoPlayerScreen(videoAnalyticsSDK: VideoAnalyticsSDK) {
+fun VideoPlayerScreen(videoAnalyticsSDK: EyevinnVideoAnalyticsSDK) {
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             factory = { _ -> videoAnalyticsSDK.playerView },
