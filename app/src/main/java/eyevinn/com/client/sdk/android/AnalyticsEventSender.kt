@@ -7,6 +7,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 
+private const val EVENT_SINK_URL =
+    "https://eyevinnlab-epasdev.eyevinn-player-analytics-eventsink.auto.prod.osaas.io"
+
 class AnalyticsEventSender {
     private val sessionId: String = UUID.randomUUID().toString()
     private val TAG = "AnalyticsEventSender"
@@ -130,7 +133,7 @@ class AnalyticsEventSender {
 
     private fun sendToEventSink(eventJson: JSONObject) {
         val eventSinkUrl =
-            "https://eyevinnlab-epasdev.eyevinn-player-analytics-eventsink.auto.prod.osaas.io"
+            EVENT_SINK_URL
         Thread {
             try {
                 (URL(eventSinkUrl).openConnection() as HttpURLConnection).apply {
