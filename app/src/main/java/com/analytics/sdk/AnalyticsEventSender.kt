@@ -1,4 +1,4 @@
-package eyevinn.com.client.sdk.android.analytics
+package com.analytics.sdk
 
 import android.util.Log
 import org.json.JSONException
@@ -7,15 +7,22 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 
-private const val EVENT_SINK_URL =
-    "https://eyevinnlab-epasdev.eyevinn-player-analytics-eventsink.auto.prod.osaas.io"
-
-class AnalyticsEventSender {
+/**
+ * Responsible for sending analytics events to a configured endpoint
+ */
+class AnalyticsEventSender(private val eventSinkUrl: String = DEFAULT_EVENT_SINK_URL) {
     private val sessionId: String = UUID.randomUUID().toString()
     private val TAG = "AnalyticsEventSender"
 
+    companion object {
+        const val DEFAULT_EVENT_SINK_URL: String = "https://default.url"
+    }
+
+    /**
+     * Send a generic event with provided parameters
+     */
     fun sendEvent(
-        eventType: String?,
+        eventType: AnalyticsEventType,
         timestamp: Long,
         playhead: Long,
         duration: Long,
@@ -23,24 +30,30 @@ class AnalyticsEventSender {
     ) {
         try {
             val eventJson = JSONObject().apply {
-                put("event", eventType)
+                put("event", eventType.value)
                 put("sessionId", sessionId)
                 put("timestamp", timestamp)
                 put("playhead", playhead)
                 put("duration", duration)
                 payload?.let { put("payload", it) }
             }
-            Log.d(TAG, "******- Sending event: $eventJson")
+            Log.d(TAG, "Sending event: $eventJson")
             sendToEventSink(eventJson)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error sending event", e)
         }
     }
 
+    /**
+     * Send initialization event
+     */
     fun sendInitEvent(expectedStartTime: Long) {
-        sendEvent("init", System.currentTimeMillis(), expectedStartTime, -1)
+        sendEvent(AnalyticsEventType.INIT, System.currentTimeMillis(), expectedStartTime, -1)
     }
 
+    /**
+     * Send metadata about the content being played
+     */
     @Throws(JSONException::class)
     fun sendMetadataEvent(isLive: Boolean, contentTitle: String?, deviceType: String) {
         val payload = JSONObject().apply {
@@ -48,45 +61,75 @@ class AnalyticsEventSender {
             put("contentTitle", contentTitle)
             put("deviceType", deviceType)
         }
-        sendEvent("metadata", System.currentTimeMillis(), 0, 0, payload)
+        sendEvent(AnalyticsEventType.METADATA, System.currentTimeMillis(), 0, 0, payload)
     }
 
+    /**
+     * Send heartbeat event indicating ongoing playback
+     */
     fun sendHeartbeatEvent(playhead: Long, duration: Long) {
-        sendEvent("heartbeat", System.currentTimeMillis(), playhead, duration)
+        sendEvent(AnalyticsEventType.HEARTBEAT, System.currentTimeMillis(), playhead, duration)
     }
 
+    /**
+     * Send event when content begins loading
+     */
     fun sendLoadingEvent() {
-        sendEvent("loading", System.currentTimeMillis(), 0, 0)
+        sendEvent(AnalyticsEventType.LOADING, System.currentTimeMillis(), 0, 0)
     }
 
+    /**
+     * Send event when content has loaded
+     */
     fun sendLoadedEvent() {
-        sendEvent("loaded", System.currentTimeMillis(), 0, 0)
+        sendEvent(AnalyticsEventType.LOADED, System.currentTimeMillis(), 0, 0)
     }
 
+    /**
+     * Send event when content begins playing
+     */
     fun sendPlayingEvent(playhead: Long, duration: Long) {
-        sendEvent("playing", System.currentTimeMillis(), playhead, duration)
+        sendEvent(AnalyticsEventType.PLAYING, System.currentTimeMillis(), playhead, duration)
     }
 
+    /**
+     * Send event when content is paused
+     */
     fun sendPausedEvent(playhead: Long, duration: Long) {
-        sendEvent("paused", System.currentTimeMillis(), playhead, duration)
+        sendEvent(AnalyticsEventType.PAUSED, System.currentTimeMillis(), playhead, duration)
     }
 
+    /**
+     * Send event when content begins buffering
+     */
     fun sendBufferingEvent(playhead: Long, duration: Long) {
-        sendEvent("buffering", System.currentTimeMillis(), playhead, duration)
+        sendEvent(AnalyticsEventType.BUFFERING, System.currentTimeMillis(), playhead, duration)
     }
 
+    /**
+     * Send event when content finishes buffering
+     */
     fun sendBufferedEvent(playhead: Long, duration: Long) {
-        sendEvent("buffered", System.currentTimeMillis(), playhead, duration)
+        sendEvent(AnalyticsEventType.BUFFERED, System.currentTimeMillis(), playhead, duration)
     }
 
+    /**
+     * Send event when user begins seeking
+     */
     fun sendSeekingEvent(playhead: Long, duration: Long) {
-        sendEvent("seeking", System.currentTimeMillis(), playhead, duration)
+        sendEvent(AnalyticsEventType.SEEKING, System.currentTimeMillis(), playhead, duration)
     }
 
+    /**
+     * Send event when seeking is completed
+     */
     fun sendSeekedEvent(playhead: Long, duration: Long) {
-        sendEvent("seeked", System.currentTimeMillis(), playhead, duration)
+        sendEvent(AnalyticsEventType.SEEKED, System.currentTimeMillis(), playhead, duration)
     }
 
+    /**
+     * Send event when video bitrate changes
+     */
     @Throws(JSONException::class)
     fun sendBitrateChangedEvent(
         playhead: Long,
@@ -99,22 +142,28 @@ class AnalyticsEventSender {
     ) {
         val payload = JSONObject().apply {
             put("bitrate", bitrate)
-            if (width != null) put("width", width)
-            if (height != null) put("height", height)
-            if (videoBitrate != null) put("videoBitrate", videoBitrate)
-            if (audioBitrate != null) put("audioBitrate", audioBitrate)
+            width?.let { put("width", it) }
+            height?.let { put("height", it) }
+            videoBitrate?.let { put("videoBitrate", it) }
+            audioBitrate?.let { put("audioBitrate", it) }
         }
-        sendEvent("bitrate_changed", System.currentTimeMillis(), playhead, duration, payload)
+        sendEvent(AnalyticsEventType.BITRATE_CHANGED, System.currentTimeMillis(), playhead, duration, payload)
     }
 
+    /**
+     * Send event when playback stops
+     */
     @Throws(JSONException::class)
     fun sendStoppedEvent(playhead: Long, duration: Long, reason: String?) {
         val payload = JSONObject().apply {
             put("reason", reason)
         }
-        sendEvent("stopped", System.currentTimeMillis(), playhead, duration, payload)
+        sendEvent(AnalyticsEventType.STOPPED, System.currentTimeMillis(), playhead, duration, payload)
     }
 
+    /**
+     * Send event when an error occurs
+     */
     @Throws(JSONException::class)
     fun sendErrorEvent(
         playhead: Long,
@@ -128,12 +177,10 @@ class AnalyticsEventSender {
             put("code", code)
             put("message", message)
         }
-        sendEvent("error", System.currentTimeMillis(), playhead, duration, payload)
+        sendEvent(AnalyticsEventType.ERROR, System.currentTimeMillis(), playhead, duration, payload)
     }
 
     private fun sendToEventSink(eventJson: JSONObject) {
-        val eventSinkUrl =
-            EVENT_SINK_URL
         Thread {
             try {
                 (URL(eventSinkUrl).openConnection() as HttpURLConnection).apply {
@@ -141,18 +188,18 @@ class AnalyticsEventSender {
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")
                     setRequestProperty("Accept", "application/json")
-
                     outputStream.use { os ->
                         os.write(eventJson.toString().toByteArray(Charsets.UTF_8))
                     }
-
-                    this.responseCode
+                    val responseCode = this.responseCode
+                    if (responseCode !in 200..299) {
+                        Log.w(TAG, "Event sink returned error code: $responseCode")
+                    }
                     disconnect()
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Failed to send event to sink", e)
             }
         }.start()
     }
-
 }

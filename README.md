@@ -1,91 +1,110 @@
-# Android Video Player SDK with Analytics
+# Eyevinn Video Analytics SDK
 
-This project demonstrates an Android video player implementation using Media3 ExoPlayer with integrated analytics tracking capabilities. It sends various playback events to an analytics endpoint for monitoring and analysis.
-
-## Overview
-
-The project consists of a simple Android application that plays video content using ExoPlayer while tracking and sending detailed playback analytics events to a remote server. Events include playback state changes, buffering, seeking, and quality changes.
+A comprehensive video player SDK for Android that combines ExoPlayer with built-in analytics tracking. This SDK simplifies media playback implementation while providing detailed analytics on user viewing behavior.
 
 ## Features
 
-- Video playback using Media3 ExoPlayer
-- Jetpack Compose UI integration
-- Comprehensive analytics tracking:
-    - Playback lifecycle events (init, loading, loaded, playing, paused, stopped)
-    - Buffering events (buffering, buffered)
-    - Seeking events (seeking, seeked)
-    - Quality change events (bitrate, resolution)
-    - Error events
-    - Regular heartbeat events for session tracking
+- **Integrated ExoPlayer**: Built-in video player with no additional setup required
+- **Comprehensive Analytics**: Automatic tracking of key video metrics (play, pause, buffering, etc.)
+- **Easy Integration**: Simple API for quick implementation
+- **Performance Monitoring**: Track buffering, bitrate changes, and errors
+- **Customizable Configuration**: Adjust settings to match your specific needs
+- **Ready-to-use UI**: Includes configured PlayerView for easy integration into layouts
 
-## Project Structure
+## Installation
 
-The project contains two main components:
+### Gradle
 
-1. **MainActivity.kt**: Handles the player initialization, UI setup, and event tracking
-2. **AnalyticsEventSender.kt**: Responsible for formatting and sending analytics events to the server
+Add the following to your project level `build.gradle`:
 
-## Setup & Usage
-
-### Prerequisites
-
-- Android Studio
-- Android SDK with minimum API level supporting Media3 components
-
-### Installation
-
-1. Clone the repository
-2. Open the project in Android Studio
-3. Sync Gradle dependencies
-4. Run the application on an emulator or physical device
-
-### Configuration
-
-The player is pre-configured to play a sample HLS stream. To change the media source, modify the `MEDIA_URL` constant in `MainActivity.kt`:
-
-```kotlin
-private const val MEDIA_URL = "your-media-url-here"
+```gradle
+allprojects {
+    repositories {
+        ...
+        maven { url 'https://jitpack.io' }
+    }
+}
 ```
 
-## Analytics Events
+Add the dependency to your app level `build.gradle`:
 
-The SDK tracks and sends the following events:
-
-| Event Type | Description |
-|------------|-------------|
-| init | Player initialization |
-| metadata | Content metadata including title, live status, device type |
-| loading | Content loading started |
-| loaded | Content successfully loaded |
-| playing | Playback started/resumed |
-| paused | Playback paused |
-| buffering | Player entered buffering state |
-| buffered | Player exited buffering state |
-| seeking | User initiated seek operation |
-| seeked | Seek operation completed |
-| bitrate_changed | Video quality changed |
-| stopped | Playback stopped |
-| error | Playback error occurred |
-| heartbeat | Regular event sent during playback |
-
-## Analytics Integration
-
-Events are sent to the Eyevinn Player Analytics event sink. The endpoint URL can be configured in the `AnalyticsEventSender` class:
-
-```kotlin
-private val eventSinkUrl = "your-analytics-endpoint-url"
+```gradle
+dependencies {
+    implementation 'com.eyevinn:video-analytics-sdk:1.0.0'
+}
 ```
 
-## Development
+### Maven
 
-### Adding Custom Events
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
 
-To add custom events, extend the `AnalyticsEventSender` class with new methods that call the base `sendEvent` method with appropriate parameters.
+<dependency>
+    <groupId>com.eyevinn</groupId>
+    <artifactId>video-analytics-sdk</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
 
-### UI Customization
+## Permissions
 
-The player uses a basic Jetpack Compose implementation with `AndroidView` to incorporate the ExoPlayer's `PlayerView`. Customize the UI by modifying the `VideoPlayer` composable function.
+Add the following permissions to your `AndroidManifest.xml`:
 
-## Credits
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+```
 
-This project was developed by Eyevinn Technology.
+## Quick Start
+
+### Basic Implementation
+
+```kotlin
+// Initialize SDK
+val videoAnalyticsSDK = VideoAnalyticsSDK.Builder(context)
+    .setContentTitle("My Video")
+    .setEventSinkUrl("https://your-analytics-endpoint.com")
+    .build()
+
+// Add player view to your layout
+layout.addView(videoAnalyticsSDK.playerView)
+
+// Load and play media
+videoAnalyticsSDK.loadMedia("https://example.com/video.m3u8")
+
+// Start tracking analytics
+videoAnalyticsSDK.startTracking()
+
+// Remember to release resources when done
+override fun onDestroy() {
+    super.onDestroy()
+    videoAnalyticsSDK.release()
+}
+```
+
+### Jetpack Compose Implementation
+
+```kotlin
+@Composable
+fun VideoPlayerScreen(videoAnalyticsSDK: VideoAnalyticsSDK) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { _ -> videoAnalyticsSDK.playerView },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+```
+
+## For Complete Documentation
+
+See the [Usage Guide](USAGE.md) for detailed instructions and advanced configuration options.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
