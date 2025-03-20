@@ -5,12 +5,14 @@ plugins {
 }
 
 android {
-    namespace 'com.yourcompany.yoursdk'
-    compileSdk 34
+    namespace "eyevinn.com.client.sdk.android"
+    compileSdk 35
 
     defaultConfig {
-        minSdk 21
-        targetSdk 34
+        // Libraries do not need applicationId
+        // applicationId "eyevinn.com.client.sdk.android"
+        minSdk 35
+        targetSdk 35
 
         versionCode 1
         versionName "1.0"
@@ -41,7 +43,39 @@ android {
     }
 }
 
-// Define publication details
+dependencies {
+    // Direct dependencies (or use your version catalog if it's set up properly)
+    implementation 'androidx.media3:media3-session:1.5.1'
+    implementation 'androidx.media3:media3-exoplayer:1.5.1'
+    implementation 'androidx.media3:media3-ui:1.5.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.5.1'
+
+    // Example direct references (instead of version-catalog aliases)
+    implementation 'androidx.core:core-ktx:1.10.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+    implementation 'androidx.activity:activity-compose:1.7.1'
+    // Compose BOM + other compose libs
+    implementation platform('androidx.compose:compose-bom:2023.03.00')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation libs.androidx.material3.android
+    implementation libs.androidx.compose.material3
+    implementation libs.androidx.tv.material
+    implementation libs.androidx.compose.material
+    // etc.
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    androidTestImplementation platform('androidx.compose:compose-bom:2023.03.00')
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+}
+
+// Publishing to Maven/JFrog
 publishing {
     publications {
         release(MavenPublication) {
@@ -49,9 +83,9 @@ publishing {
                 from components.findByName("release")
             }
 
-            groupId = 'com.yourcompany'   // Replace with your group ID
-            artifactId = 'your-sdk'       // Replace with your artifact ID
-            version = '1.0.0'             // SDK version
+            groupId = "com.eyevinn.sdk"
+            artifactId = "player-analytics"
+            version = "1.0.0"            // SDK version
         }
     }
 
