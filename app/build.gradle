@@ -1,6 +1,7 @@
 plugins {
-    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.androidLibrary)
     alias(libs.plugins.jetbrainsKotlinAndroid)
+    id 'maven-publish'
 }
 
 android {
@@ -8,11 +9,8 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId "eyevinn.com.client.sdk.android"
         minSdk 35
         targetSdk 35
-        versionCode 1
-        versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -48,6 +46,8 @@ android {
 
 dependencies {
 
+
+
     implementation 'androidx.media3:media3-session:1.5.1'
     implementation 'androidx.media3:media3-exoplayer:1.5.1'
     implementation 'androidx.media3:media3-ui:1.5.1'
@@ -69,4 +69,23 @@ dependencies {
     androidTestImplementation libs.androidx.ui.test.junit4
     debugImplementation libs.androidx.ui.tooling
     debugImplementation libs.androidx.ui.test.manifest
+}
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+
+                groupId = 'com.eyevinn.sdk.android'
+                artifactId = 'analytics events'
+                version = '0.0.1'
+
+                pom {
+                    name = 'Eyevinn Video Analytics SDK'
+                    description = 'A comprehensive video player SDK for Android that combines ExoPlayer with Eyevinn analytics tracking'
+                    url = 'https://github.com/Eyevinn/player-analytics-client-sdk-android'
+                }
+            }
+        }
+    }
 }
