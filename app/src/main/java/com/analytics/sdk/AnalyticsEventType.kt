@@ -6,9 +6,9 @@ package com.analytics.sdk
 enum class AnalyticsEventType(val value: String) {
     INIT("init"),
     METADATA("metadata"),
-    HEARTBEAT("heartbeat"),
     LOADING("loading"),
     LOADED("loaded"),
+    HEARTBEAT("heartbeat"),
     PLAYING("playing"),
     PAUSED("paused"),
     BUFFERING("buffering"),

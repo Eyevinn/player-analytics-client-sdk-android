@@ -1,3 +1,4 @@
+```markdown
 # Eyevinn Video Analytics SDK
 
 A comprehensive video player SDK for Android that combines ExoPlayer with built-in analytics tracking. This SDK simplifies media playback implementation while providing detailed analytics on user viewing behavior.
@@ -65,25 +66,34 @@ Add the following permissions to your `AndroidManifest.xml`:
 ### Basic Implementation
 
 ```kotlin
+// Initialize ExoPlayer
+val exoPlayer = ExoPlayer.Builder(context).build()
+
 // Initialize SDK
-val videoAnalyticsSDK = EyevinnVideoAnalyticsSDK.Builder(context)
+val videoAnalyticsTracker = VideoAnalyticsTracker.Builder(exoPlayer)
     .setContentTitle("My Video")
     .setEventSinkUrl("https://your-analytics-endpoint.com")
     .build()
 
 // Add player view to your layout
-layout.addView(videoAnalyticsSDK.playerView)
+val playerView = PlayerView(context).apply {
+    player = exoPlayer
+}
+layout.addView(playerView)
 
 // Load and play media
-videoAnalyticsSDK.loadMedia("https://example.com/video.m3u8")
+exoPlayer.setMediaItem(MediaItem.fromUri("https://example.com/video.m3u8"))
+exoPlayer.prepare()
+exoPlayer.playWhenReady = true
 
 // Start tracking analytics
-videoAnalyticsSDK.startTracking()
+videoAnalyticsTracker.startTracking()
 
 // Remember to release resources when done
 override fun onDestroy() {
     super.onDestroy()
-    videoAnalyticsSDK.release()
+    videoAnalyticsTracker.release()
+    exoPlayer.release()
 }
 ```
 
@@ -91,12 +101,25 @@ override fun onDestroy() {
 
 ```kotlin
 @Composable
-fun VideoPlayerScreen(videoAnalyticsSDK: EyevinnVideoAnalyticsSDK) {
+fun VideoPlayerScreen(exoPlayer: ExoPlayer, videoAnalyticsTracker: VideoAnalyticsTracker) {
+    val playerView = remember {
+        PlayerView(LocalContext.current).apply {
+            player = exoPlayer
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
-            factory = { _ -> videoAnalyticsSDK.playerView },
+            factory = { playerView },
             modifier = Modifier.fillMaxSize()
         )
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            videoAnalyticsTracker.release()
+            exoPlayer.release()
+        }
     }
 }
 ```
@@ -108,3 +131,4 @@ See the [Usage Guide](USAGE.md) for detailed instructions and advanced configura
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```
