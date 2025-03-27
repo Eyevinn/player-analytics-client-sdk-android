@@ -2,7 +2,6 @@ package com.analytics.sdk
 
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import androidx.media3.common.Format
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DecoderReuseEvaluation
@@ -10,14 +9,15 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import org.json.JSONObject
 
-/**
- * Main tracking class that automatically monitors an ExoPlayer instance
+ /*** Main tracking class that automatically monitors an ExoPlayer instance
  * and sends appropriate analytics events
  */
+
 class VideoAnalyticsTracker private constructor(
     private val player: ExoPlayer,
     private val eventSender: AnalyticsEventSender,
     private val config: Configuration
+
 ) {
     private val TAG = "VideoAnalyticsTracker"
     private var loadedEventSent = false
@@ -25,6 +25,7 @@ class VideoAnalyticsTracker private constructor(
     private var seekingEventOngoing = false
     private val heartbeatHandler = Handler(Looper.getMainLooper())
     private val heartbeatRunnable = object : Runnable {
+
         override fun run() {
             eventSender.sendHeartbeatEvent(player.currentPosition, player.duration)
             heartbeatHandler.postDelayed(this, config.heartbeatIntervalMs)
@@ -34,13 +35,15 @@ class VideoAnalyticsTracker private constructor(
     /**
      * Configuration options for the tracker
      */
+
     data class Configuration(
+
         val contentTitle: String? = null,
         val isLive: Boolean = false,
         val deviceType: String = "Android player",
         val heartbeatIntervalMs: Long = 30_000L
-    )
 
+    )
     init {
         setupPlayerListeners()
         initializeTracking()
@@ -49,6 +52,7 @@ class VideoAnalyticsTracker private constructor(
     /**
      * Builder class for creating VideoAnalyticsTracker instances
      */
+
     class Builder(private val player: ExoPlayer) {
         private var eventSinkUrl: String = AnalyticsEventSender.DEFAULT_EVENT_SINK_URL
         private var contentTitle: String? = null
@@ -58,11 +62,13 @@ class VideoAnalyticsTracker private constructor(
 
         fun setEventSinkUrl(url: String) = apply { this.eventSinkUrl = url }
         fun setContentTitle(title: String?) = apply { this.contentTitle = title }
+
         fun setIsLive(isLive: Boolean) = apply { this.isLive = isLive }
         fun setDeviceType(deviceType: String) = apply { this.deviceType = deviceType }
         fun setHeartbeatInterval(intervalMs: Long) = apply { this.heartbeatIntervalMs = intervalMs }
 
         fun build(): VideoAnalyticsTracker {
+
             val eventSender = AnalyticsEventSender(eventSinkUrl)
             val config = Configuration(contentTitle, isLive, deviceType, heartbeatIntervalMs)
             return VideoAnalyticsTracker(player, eventSender, config)
@@ -82,15 +88,17 @@ class VideoAnalyticsTracker private constructor(
                             eventSender.sendBufferedEvent(player.currentPosition, player.duration)
                             bufferingEventOngoing = false
                         }
-                        // Send "loaded" event once, when first ready
+
                         if (!loadedEventSent) {
                             eventSender.sendLoadedEvent()
                             loadedEventSent = true
                         }
+
                         if (player.playWhenReady) {
                             eventSender.sendPlayingEvent(player.currentPosition, player.duration)
                         }
                     }
+
                     Player.STATE_ENDED -> {
                         eventSender.sendStoppedEvent(
                             player.currentPosition,
@@ -120,9 +128,9 @@ class VideoAnalyticsTracker private constructor(
                     seekingEventOngoing = true
                 }
             }
-
             @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-             fun onSeekProcessed() {
+
+            fun onSeekProcessed() {
                 if (seekingEventOngoing) {
                     eventSender.sendSeekedEvent(player.currentPosition, player.duration)
                     seekingEventOngoing = false
@@ -161,7 +169,6 @@ class VideoAnalyticsTracker private constructor(
             }
         })
     }
-
     private fun initializeTracking() {
         // Send initial events
         eventSender.sendInitEvent(0L)
@@ -176,6 +183,7 @@ class VideoAnalyticsTracker private constructor(
     /**
      * Start heartbeat monitoring
      */
+
     fun startTracking() {
         heartbeatHandler.post(heartbeatRunnable)
     }
@@ -183,6 +191,7 @@ class VideoAnalyticsTracker private constructor(
     /**
      * Stop heartbeat monitoring and send stopped event
      */
+
     fun stopTracking(reason: String = "Stopped by user") {
         heartbeatHandler.removeCallbacks(heartbeatRunnable)
         eventSender.sendStoppedEvent(
@@ -195,6 +204,7 @@ class VideoAnalyticsTracker private constructor(
     /**
      * Clean up resources. Should be called when the player is being released.
      */
+
     fun release() {
         heartbeatHandler.removeCallbacks(heartbeatRunnable)
     }
@@ -202,11 +212,13 @@ class VideoAnalyticsTracker private constructor(
     /**
      * Manually send a custom event if needed
      */
+
     fun sendCustomEvent(
         eventType: String,
         playhead: Long = player.currentPosition,
         duration: Long = player.duration,
         payload: JSONObject? = null
+
     ) {
         eventSender.sendEvent(
             AnalyticsEventType.valueOf(eventType.uppercase()),

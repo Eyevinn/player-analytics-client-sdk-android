@@ -1,3 +1,4 @@
+```markdown
 # Eyevinn Video Analytics SDK - Usage Guide
 
 This comprehensive guide covers everything you need to know about implementing and using the Eyevinn Video Analytics SDK in your Android applications.
@@ -23,7 +24,7 @@ The Eyevinn Video Analytics SDK is designed to simplify media playback implement
 
 ### Key Components
 
-- `VideoAnalyticsSDK`: The main class that encapsulates ExoPlayer and analytics functionality
+- `VideoAnalyticsTracker`: The main class that encapsulates analytics functionality
 - `AnalyticsEventSender`: Responsible for sending analytics events to your configured endpoint
 - `AnalyticsEventType`: Enumeration of all possible video analytics event types
 
@@ -34,7 +35,8 @@ The Eyevinn Video Analytics SDK is designed to simplify media playback implement
 The SDK can be initialized using the Builder pattern:
 
 ```kotlin
-val videoAnalyticsSDK = VideoAnalyticsSDK.Builder(context)
+val exoPlayer = ExoPlayer.Builder(context).build()
+val videoAnalyticsTracker = VideoAnalyticsTracker.Builder(exoPlayer)
     .setContentTitle("My Video")
     .setIsLive(false)
     .setEventSinkUrl("https://your-analytics-endpoint.com")
@@ -47,26 +49,33 @@ val videoAnalyticsSDK = VideoAnalyticsSDK.Builder(context)
 
 ```kotlin
 // Load and automatically play media
-videoAnalyticsSDK.loadMedia("https://example.com/video.m3u8")
+exoPlayer.setMediaItem(MediaItem.fromUri("https://example.com/video.m3u8"))
+exoPlayer.prepare()
+exoPlayer.playWhenReady = true
 
 // Or load without automatic playback
-videoAnalyticsSDK.loadMedia("https://example.com/video.m3u8", autoPlay = false)
+exoPlayer.setMediaItem(MediaItem.fromUri("https://example.com/video.m3u8"))
+exoPlayer.prepare()
+exoPlayer.playWhenReady = false
 ```
 
 ### Adding Player to Layout
 
 ```kotlin
 // XML-based layouts
-container.addView(videoAnalyticsSDK.playerView)
+val playerView = PlayerView(context).apply {
+    player = exoPlayer
+}
+container.addView(playerView)
 ```
 
 ### Jetpack Compose
 
 ```kotlin
 @Composable
-fun VideoPlayerScreen(videoAnalyticsSDK: VideoAnalyticsSDK) {
+fun VideoPlayerScreen(playerView: PlayerView) {
     AndroidView(
-        factory = { _ -> videoAnalyticsSDK.playerView },
+        factory = { playerView },
         modifier = Modifier.fillMaxSize()
     )
 }
@@ -76,48 +85,59 @@ fun VideoPlayerScreen(videoAnalyticsSDK: VideoAnalyticsSDK) {
 
 ```kotlin
 class VideoPlayerActivity : AppCompatActivity() {
-    private lateinit var videoAnalyticsSDK: VideoAnalyticsSDK
+    private lateinit var exoPlayer: ExoPlayer
+    private lateinit var videoAnalyticsTracker: VideoAnalyticsTracker
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_video_player)
 
+        // Initialize ExoPlayer
+        exoPlayer = ExoPlayer.Builder(this).build()
+
         // Initialize SDK
-        videoAnalyticsSDK = VideoAnalyticsSDK.Builder(this)
+        videoAnalyticsTracker = VideoAnalyticsTracker.Builder(exoPlayer)
             .setContentTitle("My Video")
             .setIsLive(false)
             .setEventSinkUrl("https://your-analytics-endpoint.com")
             .build()
 
         // Add player view to layout
+        val playerView = PlayerView(this).apply {
+            player = exoPlayer
+        }
         val playerContainer = findViewById<FrameLayout>(R.id.player_container)
-        playerContainer.addView(videoAnalyticsSDK.playerView)
+        playerContainer.addView(playerView)
 
         // Load media
         val mediaUrl = "https://example.com/video.m3u8"
-        videoAnalyticsSDK.loadMedia(mediaUrl)
+        exoPlayer.setMediaItem(MediaItem.fromUri(mediaUrl))
+        exoPlayer.prepare()
     }
 
     override fun onStart() {
         super.onStart()
-        videoAnalyticsSDK.startTracking()
+        videoAnalyticsTracker.startTracking()
+        exoPlayer.play()
     }
 
     override fun onStop() {
         super.onStop()
-        videoAnalyticsSDK.stopTracking("User left the app")
+        videoAnalyticsTracker.stopTracking("User left the app")
+        exoPlayer.pause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        videoAnalyticsSDK.release()
+        videoAnalyticsTracker.release()
+        exoPlayer.release()
     }
 }
 ```
 
 ## Configuration Options
 
-The `VideoAnalyticsSDK.Builder` class provides several configuration options:
+The `VideoAnalyticsTracker.Builder` class provides several configuration options:
 
 | Method | Description | Default Value |
 |--------|-------------|---------------|
@@ -133,13 +153,13 @@ The SDK provides simple methods to control media playback:
 
 ```kotlin
 // Play
-videoAnalyticsSDK.play()
+exoPlayer.play()
 
 // Pause
-videoAnalyticsSDK.pause()
+exoPlayer.pause()
 
 // Seek to position (in milliseconds)
-videoAnalyticsSDK.seekTo(60000) // Seek to 1 minute
+exoPlayer.seekTo(60000) // Seek to 1 minute
 ```
 
 ## Analytics Events
@@ -171,20 +191,21 @@ To ensure proper resource management, follow these lifecycle patterns:
 // Start tracking when your activity/fragment becomes visible
 override fun onStart() {
     super.onStart()
-    videoAnalyticsSDK.startTracking()
-    videoAnalyticsSDK.play() // Optional, if you want to auto-resume
+    videoAnalyticsTracker.startTracking()
+    exoPlayer.play() // Optional, if you want to auto-resume
 }
 
 // Stop tracking when your activity/fragment is no longer visible
 override fun onStop() {
-    videoAnalyticsSDK.pause() // Optional, if you want to auto-pause
-    videoAnalyticsSDK.stopTracking("User left the app")
+    exoPlayer.pause() // Optional, if you want to auto-pause
+    videoAnalyticsTracker.stopTracking("User left the app")
     super.onStop()
 }
 
 // Release resources when your activity/fragment is destroyed
 override fun onDestroy() {
-    videoAnalyticsSDK.release()
+    videoAnalyticsTracker.release()
+    exoPlayer.release()
     super.onDestroy()
 }
 ```
@@ -201,21 +222,24 @@ override fun onDestroy() {
 ```
 
 ```kotlin
+val playerView = PlayerView(context).apply {
+    player = exoPlayer
+}
 val playerContainer = findViewById<FrameLayout>(R.id.player_container)
-playerContainer.addView(videoAnalyticsSDK.playerView)
+playerContainer.addView(playerView)
 ```
 
 ### Jetpack Compose
 
 ```kotlin
 @Composable
-fun VideoPlayerScreen(videoAnalyticsSDK: VideoAnalyticsSDK) {
+fun VideoPlayerScreen(playerView: PlayerView) {
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
-            factory = { _ -> videoAnalyticsSDK.playerView },
+            factory = { playerView },
             modifier = Modifier.fillMaxSize()
         )
-        
+
         // Additional UI elements can be added here
         Column(
             modifier = Modifier
@@ -234,7 +258,7 @@ You can send custom events when needed:
 
 ```kotlin
 // Send a custom event
-videoAnalyticsSDK.sendCustomEvent(
+videoAnalyticsTracker.sendCustomEvent(
     eventType = "custom_event_name",
     payload = JSONObject().apply {
         put("key1", "value1")
@@ -248,7 +272,7 @@ videoAnalyticsSDK.sendCustomEvent(
 The SDK automatically tracks playback errors, but you can also listen for them:
 
 ```kotlin
-videoAnalyticsSDK.player.addListener(object : Player.Listener {
+exoPlayer.addListener(object : Player.Listener {
     override fun onPlayerError(error: PlaybackException) {
         // Handle error
         Log.e("PlayerError", "An error occurred: ${error.message}")
@@ -264,7 +288,7 @@ While the SDK creates and manages the ExoPlayer instance, you can still access i
 
 ```kotlin
 // Access the ExoPlayer instance
-val exoPlayer = videoAnalyticsSDK.player
+val exoPlayer = videoAnalyticsTracker.player
 
 // Apply custom configuration
 exoPlayer.repeatMode = Player.REPEAT_MODE_ALL
@@ -275,7 +299,9 @@ exoPlayer.volume = 0.5f
 
 ```kotlin
 // Access the PlayerView
-val playerView = videoAnalyticsSDK.playerView
+val playerView = PlayerView(context).apply {
+    player = exoPlayer
+}
 
 // Apply custom styling
 playerView.useController = false  // Hide the default controls
@@ -289,38 +315,49 @@ playerView.setShutterBackgroundColor(Color.BLACK)
 
 ```kotlin
 class BasicPlayerActivity : AppCompatActivity() {
-    private lateinit var videoAnalyticsSDK: VideoAnalyticsSDK
+    private lateinit var exoPlayer: ExoPlayer
+    private lateinit var videoAnalyticsTracker: VideoAnalyticsTracker
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_basic_player)
 
+        // Initialize ExoPlayer
+        exoPlayer = ExoPlayer.Builder(this).build()
+
         // Initialize SDK
-        videoAnalyticsSDK = VideoAnalyticsSDK.Builder(this)
+        videoAnalyticsTracker = VideoAnalyticsTracker.Builder(exoPlayer)
             .setContentTitle("Sample Video")
             .setEventSinkUrl("https://analytics.example.com/events")
             .build()
 
         // Add player view to layout
-        findViewById<FrameLayout>(R.id.player_container).addView(videoAnalyticsSDK.playerView)
+        val playerView = PlayerView(this).apply {
+            player = exoPlayer
+        }
+        findViewById<FrameLayout>(R.id.player_container).addView(playerView)
 
         // Load media
-        videoAnalyticsSDK.loadMedia("https://example.com/video.m3u8")
+        exoPlayer.setMediaItem(MediaItem.fromUri("https://example.com/video.m3u8"))
+        exoPlayer.prepare()
     }
 
     override fun onStart() {
         super.onStart()
-        videoAnalyticsSDK.startTracking()
+        videoAnalyticsTracker.startTracking()
+        exoPlayer.play()
     }
 
     override fun onStop() {
         super.onStop()
-        videoAnalyticsSDK.stopTracking("User navigated away")
+        videoAnalyticsTracker.stopTracking("User navigated away")
+        exoPlayer.pause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        videoAnalyticsSDK.release()
+        videoAnalyticsTracker.release()
+        exoPlayer.release()
     }
 }
 ```
@@ -329,48 +366,58 @@ class BasicPlayerActivity : AppCompatActivity() {
 
 ```kotlin
 class ComposePlayerActivity : ComponentActivity() {
-    private lateinit var videoAnalyticsSDK: VideoAnalyticsSDK
+    private lateinit var exoPlayer: ExoPlayer
+    private lateinit var videoAnalyticsTracker: VideoAnalyticsTracker
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Initialize ExoPlayer
+        exoPlayer = ExoPlayer.Builder(this).build()
+
         // Initialize SDK
-        videoAnalyticsSDK = VideoAnalyticsSDK.Builder(this)
+        videoAnalyticsTracker = VideoAnalyticsTracker.Builder(exoPlayer)
             .setContentTitle("Compose Video")
             .setEventSinkUrl("https://analytics.example.com/events")
             .build()
 
         // Load media
-        videoAnalyticsSDK.loadMedia("https://example.com/video.m3u8")
+        exoPlayer.setMediaItem(MediaItem.fromUri("https://example.com/video.m3u8"))
+        exoPlayer.prepare()
 
         setContent {
             MaterialTheme {
-                VideoPlayerScreen(videoAnalyticsSDK)
+                VideoPlayerScreen(PlayerView(this).apply {
+                    player = exoPlayer
+                })
             }
         }
     }
 
     override fun onStart() {
         super.onStart()
-        videoAnalyticsSDK.startTracking()
+        videoAnalyticsTracker.startTracking()
+        exoPlayer.play()
     }
 
     override fun onStop() {
         super.onStop()
-        videoAnalyticsSDK.stopTracking("User navigated away")
+        videoAnalyticsTracker.stopTracking("User navigated away")
+        exoPlayer.pause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        videoAnalyticsSDK.release()
+        videoAnalyticsTracker.release()
+        exoPlayer.release()
     }
 }
 
 @Composable
-fun VideoPlayerScreen(videoAnalyticsSDK: VideoAnalyticsSDK) {
+fun VideoPlayerScreen(playerView: PlayerView) {
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
-            factory = { _ -> videoAnalyticsSDK.playerView },
+            factory = { playerView },
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -423,3 +470,4 @@ if (BuildConfig.DEBUG) {
 ```
 
 For more assistance, please contact Eyevinn support or submit an issue on the GitHub repository.
+```
