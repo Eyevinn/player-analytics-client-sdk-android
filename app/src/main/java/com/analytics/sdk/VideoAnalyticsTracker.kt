@@ -215,16 +215,14 @@ class VideoAnalyticsTracker private constructor(
 
     fun sendCustomEvent(
         eventType: String,
-        playhead: Long = player.currentPosition,
-        duration: Long = player.duration,
         payload: JSONObject? = null
 
     ) {
         eventSender.sendEvent(
             AnalyticsEventType.valueOf(eventType.uppercase()),
             System.currentTimeMillis(),
-            playhead,
-            duration,
+            player.currentPosition,
+            player.duration,
             payload
         )
     }
