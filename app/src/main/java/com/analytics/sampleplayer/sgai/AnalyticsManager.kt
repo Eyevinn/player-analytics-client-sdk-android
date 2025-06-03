@@ -1,4 +1,4 @@
-package com.analytics.sampleplayer
+package com.analytics.sampleplayer.sgai
 
 import androidx.media3.exoplayer.ExoPlayer
 import com.analytics.sdk.VideoAnalyticsTracker

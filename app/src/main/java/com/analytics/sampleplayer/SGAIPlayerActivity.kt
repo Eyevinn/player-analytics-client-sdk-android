@@ -6,7 +6,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.media3.ui.PlayerView
-import com.analytics.sampleplayer.ui.SGAIVideoPlayerScreen
+import com.analytics.sampleplayer.sgai.AdManager
+import com.analytics.sampleplayer.sgai.AnalyticsManager
+import com.analytics.sampleplayer.sgai.PlayerManager
+import com.analytics.sampleplayer.sgai.ui.SGAIVideoPlayerScreen
 
 class SGAIPlayerActivity : ComponentActivity() {
 

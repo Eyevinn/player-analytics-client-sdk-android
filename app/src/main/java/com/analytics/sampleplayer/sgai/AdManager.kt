@@ -1,4 +1,4 @@
-package com.analytics.sampleplayer
+package com.analytics.sampleplayer.sgai
 
 import android.net.Uri
 import android.util.Log

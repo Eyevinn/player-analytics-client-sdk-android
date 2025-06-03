@@ -1,4 +1,4 @@
-package com.analytics.sampleplayer
+package com.analytics.sampleplayer.sgai
 
 import android.content.Context
 import android.net.Uri

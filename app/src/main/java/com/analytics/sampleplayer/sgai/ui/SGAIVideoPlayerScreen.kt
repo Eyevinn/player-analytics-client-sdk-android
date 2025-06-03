@@ -1,4 +1,4 @@
-package com.analytics.sampleplayer.ui
+package com.analytics.sampleplayer.sgai.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
