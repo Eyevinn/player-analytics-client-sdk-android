@@ -33,28 +33,39 @@ class AdManager(
     private var currentStandardTracking: Map<String, List<String>> = emptyMap()
     private var currentProgressTracking: List<Pair<AdTrackingEvent, Long>> = emptyList()
     private val sentProgressOffsets: MutableSet<Long> = mutableSetOf()
+    private var currentAdDuration: Long = 0L
 
     private val adPlayerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(state: Int) {
             if (playingAd) {
-                if (state == Player.STATE_READY && !adTrackingEvents.getOrDefault("loaded", false)) {
-                    sendStandardTrackingEvent("loaded")
-                }
-                if (state == Player.STATE_ENDED && !adTrackingEvents.getOrDefault("complete", false)) {
-                    sendStandardTrackingEvent("complete")
+                when (state) {
+                    Player.STATE_READY -> {
+                        if (!adTrackingEvents.getOrDefault("loaded", false)) {
+                            sendStandardTrackingEvent("loaded")
+                        }
+                    }
+                    Player.STATE_ENDED -> {
+                        if (!adTrackingEvents.getOrDefault("complete", false)) {
+                            sendStandardTrackingEvent("complete")
+                        }
+                    }
                 }
             }
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (playingAd) {
-                if (isPlaying && playerManager.player.currentPosition == 0L) {
-                    sendStandardTrackingEvent("impression")
-                    sendStandardTrackingEvent("start")
-                } else if (!isPlaying && playerManager.player.playbackState == Player.STATE_READY) {
-                    sendStandardTrackingEvent("pause")
-                } else if (isPlaying && playerManager.player.currentPosition > 0) {
-                    sendStandardTrackingEvent("resume")
+                when {
+                    isPlaying && playerManager.player.currentPosition == 0L -> {
+                        sendStandardTrackingEvent("impression")
+                        sendStandardTrackingEvent("start")
+                    }
+                    !isPlaying && playerManager.player.playbackState == Player.STATE_READY -> {
+                        sendStandardTrackingEvent("pause")
+                    }
+                    isPlaying && playerManager.player.currentPosition > 0 -> {
+                        sendStandardTrackingEvent("resume")
+                    }
                 }
             }
         }
@@ -214,7 +225,7 @@ class AdManager(
             playingAd = true
 
             // Send podStart from podSignaling if available
-            adResponse.podSignaling?.payload?.tracking?.filter { it.event == "podStart" }?.flatMap { it.urls }?.forEach {
+            adResponse.podSignaling?.payload?.tracking?.filter { it.type == "podStart" }?.flatMap { it.urls }?.forEach {
                 Log.d(TAG, "Sending podStart tracking pixel to: $it")
                 sendTrackingPixel(it)
             }
@@ -225,6 +236,7 @@ class AdManager(
             for (adAsset in adResponse.ASSETS) {
                 Log.d(TAG, "Inserting ad: ${adAsset.URI} (Duration: ${adAsset.DURATION} seconds)")
                 currentAdId = adAsset.URI.hashCode().toString()
+                currentAdDuration = adAsset.DURATION
                 Log.d(TAG, "Processing ad with ID: $currentAdId from URI: ${adAsset.URI}")
 
                 val adManifestContent = getAdMediaUrl(adAsset.URI)
@@ -237,7 +249,7 @@ class AdManager(
             }
 
             // Send podEnd from podSignaling if available
-            adResponse.podSignaling?.payload?.tracking?.filter { it.event == "podEnd" }?.flatMap { it.urls }?.forEach {
+            adResponse.podSignaling?.payload?.tracking?.filter { it.type == "podEnd" }?.flatMap { it.urls }?.forEach {
                 Log.d(TAG, "Sending podEnd tracking pixel to: $it")
                 sendTrackingPixel(it)
             }
@@ -288,54 +300,53 @@ class AdManager(
     private suspend fun playAd(mediaSegmentUrl: String, adDuration: Long, adAsset: AdAsset) {
         adTrackingEvents.clear()
         sentProgressOffsets.clear()
+
+        // Extract tracking events from the creative signaling
         val trackingEvents = adAsset.X_AD_CREATIVE_SIGNALING?.payload?.tracking ?: emptyList()
-        val standardTracking = trackingEvents.filter { it.event != "progress" }.groupBy { it.event }.mapValues { it.value.flatMap { it.urls } }
-        val progressTracking = trackingEvents.filter { it.event == "progress" }.mapNotNull { event ->
-            parseOffset(event.offset)?.let { offset -> Pair(event, offset) }
-        }
+
+        // Create standard tracking map using 'type' field instead of 'event'
+        val standardTracking = trackingEvents.groupBy { it.type }.mapValues { it.value.flatMap { it.urls } }
         currentStandardTracking = standardTracking
-        currentProgressTracking = progressTracking
+
+        Log.d(TAG, "Available tracking events: ${standardTracking.keys}")
+        Log.d(TAG, "Tracking URLs: $standardTracking")
 
         playerManager.player.addListener(adPlayerListener)
         playerManager.setAdMediaItem(mediaSegmentUrl)
         playerManager.play()
 
-        CoroutineScope(Dispatchers.Main).launch {
+        // Progress monitoring coroutine
+        val progressJob = CoroutineScope(Dispatchers.Main).launch {
             while (isActive && playerManager.player.playbackState != Player.STATE_ENDED) {
                 val currentPosition = playerManager.player.currentPosition
-                val totalDuration = adDuration * 1000
-                val progressPercentage = if (totalDuration > 0) (currentPosition.toFloat() / totalDuration.toFloat()) * 100 else 0f
-                Log.d(TAG, "Ad progress: $progressPercentage% ($currentPosition / ${adDuration * 1000}ms)")
+                val totalDuration = adDuration * 1000L
+                val progressPercentage = if (totalDuration > 0) {
+                    (currentPosition.toFloat() / totalDuration.toFloat()) * 100
+                } else 0f
 
-                // Track quartile events
-                if (progressPercentage >= 25 && !adTrackingEvents.getOrDefault("firstQuartile", false)) {
-                    Log.d(TAG, "** Reached first quartile (25%)")
-                    sendStandardTrackingEvent("firstQuartile")
-                }
-                if (progressPercentage >= 50 && !adTrackingEvents.getOrDefault("midpoint", false)) {
-                    Log.d(TAG, "Reached midpoint (50%)")
-                    sendStandardTrackingEvent("midpoint")
-                }
-                if (progressPercentage >= 75 && !adTrackingEvents.getOrDefault("thirdQuartile", false)) {
-                    Log.d(TAG, "Reached third quartile (75%)")
-                    sendStandardTrackingEvent("thirdQuartile")
-                }
+                Log.d(TAG, "Ad progress: $progressPercentage% ($currentPosition / ${totalDuration}ms)")
 
-                // Track progress events
-                currentProgressTracking.forEach { (event, offset) ->
-                    if (currentPosition >= offset && offset !in sentProgressOffsets) {
-                        event.urls.forEach { sendTrackingPixel(it) }
-                        sentProgressOffsets.add(offset)
-                        Log.d(TAG, "Sent progress at $offset ms")
+                // Track quartile events based on progress percentage
+                when {
+                    progressPercentage >= 25 && !adTrackingEvents.getOrDefault("firstQuartile", false) -> {
+                        Log.d(TAG, "** Reached first quartile (25%)")
+                        sendStandardTrackingEvent("firstQuartile")
+                    }
+                    progressPercentage >= 50 && !adTrackingEvents.getOrDefault("midpoint", false) -> {
+                        Log.d(TAG, "** Reached midpoint (50%)")
+                        sendStandardTrackingEvent("midpoint")
+                    }
+                    progressPercentage >= 75 && !adTrackingEvents.getOrDefault("thirdQuartile", false) -> {
+                        Log.d(TAG, "** Reached third quartile (75%)")
+                        sendStandardTrackingEvent("thirdQuartile")
+                    }
+                    progressPercentage >= 95 && !adTrackingEvents.getOrDefault("complete", false) -> {
+                        Log.d(TAG, "** Ad near completion (95%)")
+                        sendStandardTrackingEvent("complete")
                     }
                 }
 
                 delay(250)
-            }
-
-            // Ensure complete event is sent
-            if (!adTrackingEvents.getOrDefault("complete", false)) {
-                sendStandardTrackingEvent("complete")
             }
         }
 
@@ -343,25 +354,21 @@ class AdManager(
         while (playerManager.player.playbackState != Player.STATE_ENDED) {
             delay(100)
         }
-        playerManager.player.removeListener(adPlayerListener)
-    }
 
-    private fun parseOffset(offset: String?): Long? {
-        if (offset == null) return null
-        val parts = offset.split(":")
-        if (parts.size == 3) {
-            val hours = parts[0].toLongOrNull() ?: 0L
-            val minutes = parts[1].toLongOrNull() ?: 0L
-            val seconds = parts[2].toDoubleOrNull() ?: 0.0
-            return ((hours * 3600 + minutes * 60 + seconds) * 1000).toLong()
+        progressJob.cancel()
+        playerManager.player.removeListener(adPlayerListener)
+
+        // Ensure complete event is sent
+        if (!adTrackingEvents.getOrDefault("complete", false)) {
+            sendStandardTrackingEvent("complete")
         }
-        return null
     }
 
     private fun resumeMainContent() {
         Log.d(TAG, "Resuming main content with URL: $mainStreamUrl")
         playingAd = false
         currentAdId = null
+        currentAdDuration = 0L
         playerManager.setMainMediaItem(mainStreamUrl)
         playerManager.play()
         Log.d(TAG, "Main content playback initiated")
@@ -377,30 +384,50 @@ class AdManager(
     private fun sendStandardTrackingEvent(eventType: String) {
         currentStandardTracking[eventType]?.let { urls ->
             if (!adTrackingEvents.getOrDefault(eventType, false)) {
-                Log.d(TAG, "Sending $eventType with URLs: $urls")
-                urls.forEach { sendTrackingPixel(it) }
+                Log.d(TAG, "** Sending $eventType event with ${urls.size} URLs")
+                urls.forEach { url ->
+                    Log.d(TAG, "** Tracking URL: $url")
+                    sendTrackingPixel(url)
+                }
                 adTrackingEvents[eventType] = true
+                Log.d(TAG, "** Event $eventType marked as sent")
+            } else {
+                Log.d(TAG, "** Event $eventType already sent, skipping")
             }
+        } ?: run {
+            Log.d(TAG, "** No tracking URLs found for event: $eventType")
         }
     }
 
     private fun sendTrackingPixel(trackingUrl: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                Log.d(TAG, "Sending VAST tracking pixel to: $trackingUrl")
-                val url = URL(trackingUrl)
+                // Decode URL if needed
+                val decodedUrl = java.net.URLDecoder.decode(trackingUrl, "UTF-8")
+                Log.d(TAG, "** Sending tracking pixel to: $decodedUrl")
+
+                val url = URL(decodedUrl)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
                 connection.instanceFollowRedirects = true
                 connection.setRequestProperty("User-Agent", "SGAI-Android-Player/1.0")
                 connection.connect()
+
                 val responseCode = connection.responseCode
-                Log.d(TAG, "VAST tracking pixel sent successfully, response: $responseCode")
+                Log.d(TAG, "** Tracking pixel sent successfully, response: $responseCode")
+
+                // Read response for debugging
+                if (responseCode == 200) {
+                    val responseBody = connection.inputStream.bufferedReader().use { it.readText() }
+                    Log.d(TAG, "** Response body: $responseBody")
+                }
+
                 connection.disconnect()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send VAST tracking pixel to $trackingUrl: ${e.message}")
+                Log.e(TAG, "** Failed to send tracking pixel to $trackingUrl: ${e.message}")
+                e.printStackTrace()
             }
         }
     }
@@ -463,7 +490,7 @@ class AdManager(
     )
 
     data class AdTrackingEvent(
-        val event: String,
+        val type: String,  // Changed from 'event' to 'type' to match manifest
         val urls: List<String>,
         val offset: String? = null
     )
