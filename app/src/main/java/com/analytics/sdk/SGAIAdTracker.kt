@@ -34,7 +34,7 @@ object PlaybackState {
 /**
  * Main SDK class for monitoring manifests and tracking ad impressions.
  */
-class AdTrackingSDK(
+class SGAIAdTracker(
     private val context: Context,
     private val mainStreamUrl: String,
     private val playerCallback: PlayerCallback

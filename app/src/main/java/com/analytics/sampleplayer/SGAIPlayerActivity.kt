@@ -10,7 +10,7 @@ import androidx.media3.ui.PlayerView
 import com.analytics.sampleplayer.sgai.AnalyticsManager
 import com.analytics.sampleplayer.sgai.PlayerManager
 import com.analytics.sampleplayer.sgai.ui.SGAIVideoPlayerScreen
-import com.analytics.sdk.AdTrackingSDK
+import com.analytics.sdk.SGAIAdTracker
 import com.analytics.sdk.PlaybackState
 import com.analytics.sdk.PlayerCallback
 
@@ -18,7 +18,7 @@ class SGAIPlayerActivity : ComponentActivity() {
 
     private lateinit var playerManager: PlayerManager
     private lateinit var analyticsManager: AnalyticsManager
-    private lateinit var adTrackingSDK: AdTrackingSDK
+    private lateinit var sgaiAdTracker: SGAIAdTracker
 
     private val sgaiStreamUrl = "http://10.0.2.2:3333/loop/master.m3u8"
     private val eventSinkUrl =
@@ -29,7 +29,7 @@ class SGAIPlayerActivity : ComponentActivity() {
 
         playerManager = PlayerManager(this)
         analyticsManager = AnalyticsManager(playerManager.player, eventSinkUrl)
-        adTrackingSDK = initSGAIAdTracker()
+        sgaiAdTracker = initSGAIAdTracker()
 
         playerManager.setMainMediaItem(sgaiStreamUrl)
         val playerView = PlayerView(this).apply {
@@ -44,8 +44,8 @@ class SGAIPlayerActivity : ComponentActivity() {
         Log.i("SGAI_AdTracking", "Stream URL: $sgaiStreamUrl")
     }
 
-    private fun initSGAIAdTracker(): AdTrackingSDK {
-        return AdTrackingSDK(this, sgaiStreamUrl, object : PlayerCallback {
+    private fun initSGAIAdTracker(): SGAIAdTracker {
+        return SGAIAdTracker(this, sgaiStreamUrl, object : PlayerCallback {
             override fun playAd(adUrl: String, duration: Long) {
                 playerManager.setAdMediaItem(adUrl)
                 playerManager.play()
@@ -76,7 +76,7 @@ class SGAIPlayerActivity : ComponentActivity() {
         super.onStart()
         analyticsManager.startTracking()
         playerManager.play()
-        adTrackingSDK.startMonitoring()
+        sgaiAdTracker.startMonitoring()
 
     }
 
@@ -84,7 +84,7 @@ class SGAIPlayerActivity : ComponentActivity() {
         super.onStop()
         analyticsManager.stopTracking("User left the app")
         playerManager.pause()
-        adTrackingSDK.stopMonitoring()
+        sgaiAdTracker.stopMonitoring()
 
     }
 
@@ -92,7 +92,7 @@ class SGAIPlayerActivity : ComponentActivity() {
         super.onDestroy()
         analyticsManager.release()
         playerManager.release()
-        adTrackingSDK.release()
+        sgaiAdTracker.release()
     }
 }
 
