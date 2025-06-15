@@ -9,11 +9,12 @@ class AnalyticsManager(
 ) {
     private val analyticsTracker: VideoAnalyticsTracker = VideoAnalyticsTracker.Builder(player)
         .setEventSinkUrl(eventSinkUrl)
-        .setContentTitle("SGAI Live Stream with Ads")
+        .setContentTitle("SGAI Stream with Ads")
         .setIsLive(true)
         .setDeviceType("Android")
         .setHeartbeatInterval(30_000L)
         .build()
+
 
     fun startTracking() {
         analyticsTracker.startTracking()

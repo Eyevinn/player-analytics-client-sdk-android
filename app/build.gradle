@@ -66,6 +66,13 @@ dependencies {
     implementation libs.retrofit // For HTTP requests
     implementation libs.converter.gson // For HTTP requests
 
+    implementation "androidx.media3:media3-exoplayer:1.4.1"
+    implementation "androidx.media3:media3-exoplayer-hls:1.4.1"
+    implementation "androidx.media3:media3-exoplayer-dash:1.4.1"
+    implementation "androidx.media3:media3-datasource-okhttp:1.4.1"
+    implementation libs.interactivemedia
+
+
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core

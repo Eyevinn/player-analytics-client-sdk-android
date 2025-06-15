@@ -20,7 +20,7 @@ import com.analytics.sdk.VideoAnalyticsTracker
  * 2) Uses VideoAnalyticsTracker to send analytics events
  * 3) Embeds the PlayerView in a Jetpack Compose layout
  */
-class SimplePlayerActivity : ComponentActivity() {
+class SimpleSeparatedPlayerActivity : ComponentActivity() {
 
     private lateinit var exoPlayer: ExoPlayer
     private lateinit var analyticsTracker: VideoAnalyticsTracker

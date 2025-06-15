@@ -4,36 +4,34 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.OptIn
 import androidx.compose.material3.MaterialTheme
-import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.analytics.sampleplayer.sgai.AnalyticsManager
-import com.analytics.sampleplayer.sgai.PlayerManager
-import com.analytics.sampleplayer.sgai.ui.SGAIVideoPlayerScreen
 import com.analytics.sdk.SGAIAdTracker
-import com.analytics.sdk.PlaybackState
-import com.analytics.sdk.PlayerCallback
+import com.analytics.sampleplayer.sgai.ui.SGAIVideoPlayerScreen
 
+@UnstableApi
 class SGAIPlayerActivity : ComponentActivity() {
 
-    private lateinit var playerManager: PlayerManager
+    private lateinit var adTracker: SGAIAdTracker
     private lateinit var analyticsManager: AnalyticsManager
-    private lateinit var sgaiAdTracker: SGAIAdTracker
 
-    private val sgaiStreamUrl = "http://10.0.2.2:3333/loop/master.m3u8"
+    private val sgaiStreamUrl = "http://10.0.2.2:3333/x36xhzz/x36xhzz.m3u8"
     private val eventSinkUrl =
         "https://eyevinnlab-epasdev.eyevinn-player-analytics-eventsink.auto.prod.osaas.io"
 
+    @OptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        playerManager = PlayerManager(this)
-        analyticsManager = AnalyticsManager(playerManager.player, eventSinkUrl)
-        sgaiAdTracker = initSGAIAdTracker()
+        adTracker = SGAIAdTracker(this)
+        analyticsManager = AnalyticsManager(adTracker.player, eventSinkUrl)
 
-        playerManager.setMainMediaItem(sgaiStreamUrl)
+        adTracker.setMainMediaItem(sgaiStreamUrl)
         val playerView = PlayerView(this).apply {
-            player = playerManager.player
+            player = adTracker.player
         }
         setContent {
             MaterialTheme {
@@ -44,55 +42,26 @@ class SGAIPlayerActivity : ComponentActivity() {
         Log.i("SGAI_AdTracking", "Stream URL: $sgaiStreamUrl")
     }
 
-    private fun initSGAIAdTracker(): SGAIAdTracker {
-        return SGAIAdTracker(this, sgaiStreamUrl, object : PlayerCallback {
-            override fun playAd(adUrl: String, duration: Long) {
-                playerManager.setAdMediaItem(adUrl)
-                playerManager.play()
-            }
-
-            override fun resumeMainContent() {
-                playerManager.setMainMediaItem(sgaiStreamUrl)
-                playerManager.play()
-            }
-
-            override fun getCurrentPosition(): Long {
-                return playerManager.player.currentPosition
-            }
-
-            override fun getPlaybackState(): Int {
-                return when (playerManager.player.playbackState) {
-                    Player.STATE_IDLE -> PlaybackState.STATE_IDLE
-                    Player.STATE_BUFFERING -> PlaybackState.STATE_BUFFERING
-                    Player.STATE_READY -> PlaybackState.STATE_READY
-                    Player.STATE_ENDED -> PlaybackState.STATE_ENDED
-                    else -> PlaybackState.STATE_IDLE
-                }
-            }
-        })
-    }
-
+    @OptIn(UnstableApi::class)
     override fun onStart() {
         super.onStart()
         analyticsManager.startTracking()
-        playerManager.play()
-        sgaiAdTracker.startMonitoring()
+        adTracker.play()
 
     }
 
+    @OptIn(UnstableApi::class)
     override fun onStop() {
         super.onStop()
         analyticsManager.stopTracking("User left the app")
-        playerManager.pause()
-        sgaiAdTracker.stopMonitoring()
+        adTracker.pause()
 
     }
-
+    @OptIn(UnstableApi::class)
     override fun onDestroy() {
         super.onDestroy()
         analyticsManager.release()
-        playerManager.release()
-        sgaiAdTracker.release()
+        adTracker.release()
     }
 }
 

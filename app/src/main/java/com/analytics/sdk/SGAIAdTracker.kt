@@ -1,457 +1,430 @@
 package com.analytics.sdk
 
 import android.content.Context
-import android.net.Uri
-import android.util.Log
-import com.google.gson.annotations.SerializedName
+import android.os.Handler
+import android.os.Looper
+import android.view.ViewGroup
+import androidx.annotation.OptIn
+import androidx.media3.common.AdOverlayInfo
+import androidx.media3.common.AdViewProvider
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaItem.AdsConfiguration
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.Timeline
+import androidx.media3.common.util.Log
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.hls.HlsInterstitialsAdsLoader
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.exoplayer.util.EventLogger
 import kotlinx.coroutines.*
-import okhttp3.OkHttpClient
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Url
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.NonCancellable.isActive
+import java.net.URLDecoder
+import androidx.core.net.toUri
 
-/**
- * Interface for player to communicate playback state to SDK and receive ad playback instructions.
- */
+@OptIn(UnstableApi::class)
+class SGAIAdTracker(private val context: Context) {
 
+    private val dataSourceFactory = DefaultDataSource.Factory(context)
+    private var playerViewContainer: ViewGroup? = null
+    private var adExtractor: SGAIAdTrackingUrlsExtractor? = null
 
-/**
- * Playback states to align with common player implementations (e.g., ExoPlayer).
- */
-object PlaybackState {
-    const val STATE_IDLE = 1
-    const val STATE_BUFFERING = 2
-    const val STATE_READY = 3
-    const val STATE_ENDED = 4
-}
+    private val adTrackingUrlsMap: MutableMap<String, Map<String, List<String>>> = mutableMapOf()
+    private val sentTrackingEvents: MutableMap<String, MutableSet<String>> = mutableMapOf()
 
-/**
- * Main SDK class for monitoring manifests and tracking ad impressions.
- */
-class SGAIAdTracker(
-    private val context: Context,
-    private val mainStreamUrl: String,
-    private val playerCallback: PlayerCallback
-) {
-    private val TAG = "SGAI_AdTrackingSDK"
-    private val sessionId = UUID.randomUUID().toString()
-    private var isPlayingAd = false
-    private var currentAdId: String? = null
-    private var currentAdDuration: Long = 0L
-    private val manifestRefreshInterval = 15_000L // Poll every 15 seconds
-    private var monitoringJob: Job? = null
-    private val adTrackingEvents = mutableMapOf<String, Boolean>()
-    private val sentProgressOffsets = mutableSetOf<Long>()
-    private var currentStandardTracking: Map<String, List<String>> = emptyMap()
-    private val retrofit: Retrofit
-
-    init {
-        retrofit = initializeRetrofit()
-        Log.i(TAG, "AdTrackingSDK initialized with session ID: $sessionId")
+    /**
+     * Store tracking URLs map for a specific ad.
+     * @param adKey Unique identifier for the ad (e.g., "adsId_adGroup_adIndex")
+     * @param trackingMap Map where key is event type and value is list of tracking URLs
+     */
+    fun setAdTrackingUrls(adKey: String, trackingMap: Map<String, List<String>>) {
+        adTrackingUrlsMap[adKey] = trackingMap
+        sentTrackingEvents[adKey] = mutableSetOf()
+        Log.d("TrackingMap", "Stored tracking URLs for ad $adKey with ${trackingMap.size} event types")
     }
 
     /**
-     * Initialize Retrofit for ad asset fetching.
+     * Send tracking pixel request to URL.
      */
-    private fun initializeRetrofit(): Retrofit {
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
-        return Retrofit.Builder()
-            .baseUrl("http://10.0.2.2:3333/") // Base URL for ad assets
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-    }
-
-    /**
-     * Start monitoring the manifest and ad playback.
-     */
-    fun startMonitoring() {
-        monitoringJob = CoroutineScope(Dispatchers.Main).launch {
-            monitorLiveStream(mainStreamUrl)
-        }
-        Log.d(TAG, "Started manifest monitoring for: $mainStreamUrl")
-    }
-
-    /**
-     * Stop monitoring the manifest.
-     */
-    fun stopMonitoring() {
-        monitoringJob?.cancel()
-        Log.d(TAG, "Stopped manifest monitoring")
-    }
-
-    /**
-     * Poll the manifest periodically and process ad cues.
-     */
-    private suspend fun monitorLiveStream(streamUrl: String) {
-        while (isActive) {
-            if (!isPlayingAd) {
-                val manifestContent = withContext(Dispatchers.IO) {
-                    fetchManifestContent(streamUrl)
-                }
-                if (!manifestContent.isNullOrEmpty()) {
-                    if (manifestContent.contains("#EXT-X-DATERANGE") || manifestContent.contains("#EXT-X-STREAM-INF")) {
-                        val variantUrl = extractVariantUrl(manifestContent, streamUrl)
-                        if (variantUrl != null) {
-                            val mediaPlaylistContent = withContext(Dispatchers.IO) {
-                                fetchManifestContent(variantUrl)
-                            }
-                            if (!mediaPlaylistContent.isNullOrEmpty()) {
-                                parseAdCues(mediaPlaylistContent)
-                            }
-                        }
-                    } else {
-                        parseAdCues(manifestContent)
-                    }
-                }
-            }
-            delay(manifestRefreshInterval)
-        }
-    }
-
-    /**
-     * Fetch manifest content from the provided URL.
-     */
-    private fun fetchManifestContent(urlString: String): String? {
-        return try {
-            val url = URL(urlString)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10_000
-            connection.readTimeout = 10_000
-            val inputStream = connection.inputStream
-            val content = inputStream.bufferedReader().use { it.readText() }
-            connection.disconnect()
-            content
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch manifest: ${e.message}")
-            null
-        }
-    }
-
-    /**
-     * Extract variant URL from master playlist.
-     */
-    private fun extractVariantUrl(manifestContent: String, baseUrl: String): String? {
-        val lines = manifestContent.split("\n")
-        for (i in lines.indices) {
-            if (lines[i].startsWith("#EXT-X-DATERANGE") || lines[i].startsWith("#EXT-X-STREAM-INF")) {
-                return lines.getOrNull(i + 1)?.let { resolveUrl(baseUrl, it) }
-            }
-        }
-        return null
-    }
-
-    /**
-     * Resolve relative URLs against the base URL.
-     */
-    private fun resolveUrl(baseUrl: String, relativeUrl: String): String {
-        return if (relativeUrl.startsWith("http")) {
-            relativeUrl
-        } else {
-            val baseUri = Uri.parse(baseUrl)
-            val basePath = baseUri.path?.substringBeforeLast('/') ?: ""
-            baseUri.buildUpon()
-                .path("$basePath/$relativeUrl")
-                .build()
-                .toString()
-        }
-    }
-
-    /**
-     * Parse ad cues from the manifest and process ad breaks.
-     */
-    private suspend fun parseAdCues(manifestContent: String) {
-        val lines = manifestContent.split("\n")
-        var adBreakId: String? = null
-        for (line in lines) {
-            if (line.startsWith("#EXT-X-DATERANGE")) {
-                adBreakId = extractAdBreakId(line)
-                val assetListUrl = extractAssetListUrl(line)?.replace("localhost", "10.0.2.2")
-                if (assetListUrl != null) {
-                    fetchAndPlayAds(assetListUrl, adBreakId)
-                }
-            }
-        }
-    }
-
-    /**
-     * Extract ad break ID from DATERANGE tag.
-     */
-    private fun extractAdBreakId(line: String): String {
-        val attributes = line.split(",")
-        for (attribute in attributes) {
-            if (attribute.contains("ID=")) {
-                return attribute.substringAfter("ID=\"").substringBefore("\"")
-            }
-        }
-        return UUID.randomUUID().toString()
-    }
-
-    /**
-     * Extract asset list URL from DATERANGE tag.
-     */
-    private fun extractAssetListUrl(line: String): String? {
-        val attributes = line.split(",")
-        for (attribute in attributes) {
-            if (attribute.startsWith("X-ASSET-LIST=")) {
-                return attribute.substringAfter("X-ASSET-LIST=\"").substringBefore("\"")
-            }
-        }
-        return null
-    }
-
-    /**
-     * Fetch ad assets and play them.
-     */
-    private suspend fun fetchAndPlayAds(assetListUrl: String, adBreakId: String) {
-        try {
-            val adResponse = retrofit.create(AdService::class.java).getAdAssets(assetListUrl)
-            isPlayingAd = true
-            Log.d(TAG, "Ad break started: $adBreakId with ${adResponse.assets.size} ads")
-
-            // Send podStart tracking events
-            adResponse.podSignaling?.payload?.tracking?.filter { it.type == "podStart" }
-                ?.flatMap { it.urls }?.forEach { sendTrackingPixel(it) }
-
-            // Play each ad in sequence
-            val sortedAds = adResponse.assets.sortedBy { it.signaling?.payload?.start ?: 0L }
-            for (ad in sortedAds) {
-                currentAdId = ad.uri.hashCode().toString()
-                currentAdDuration = ad.duration
-                val adUrl = fetchAdMediaUrl(ad.uri)
-                if (adUrl != null) {
-                    playAd(adUrl, ad.duration, ad.signaling?.payload?.tracking ?: emptyList())
-                } else {
-                    Log.e(TAG, "Failed to fetch ad media URL for ${ad.uri}")
-                }
-            }
-
-            // Send podEnd tracking events
-            adResponse.podSignaling?.payload?.tracking?.filter { it.type == "podEnd" }
-                ?.flatMap { it.urls }?.forEach { sendTrackingPixel(it) }
-
-            isPlayingAd = false
-            currentAdId = null
-            currentAdDuration = 0L
-            playerCallback.resumeMainContent()
-            Log.d(TAG, "Ad break completed: $adBreakId")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error processing ad break: ${e.message}")
-            isPlayingAd = false
-            playerCallback.resumeMainContent()
-        }
-    }
-
-    /**
-     * Fetch the actual media URL for an ad.
-     */
-    private suspend fun fetchAdMediaUrl(adUri: String): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val manifestContent = fetchManifestContent(adUri)
-                manifestContent?.let { extractMediaSegmentUrl(it) }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch ad media: ${e.message}")
-                null
-            }
-        }
-    }
-
-    /**
-     * Extract media segment URL from ad manifest.
-     */
-    private fun extractMediaSegmentUrl(manifestContent: String): String? {
-        return manifestContent.split("\n").firstOrNull { it.startsWith("http") }?.trim()
-    }
-
-    /**
-     * Play an ad and track its progress.
-     */
-    private suspend fun playAd(adUrl: String, duration: Long, trackingEvents: List<AdTrackingEvent>) {
-        adTrackingEvents.clear()
-        sentProgressOffsets.clear()
-        currentStandardTracking = trackingEvents.groupBy { it.type }.mapValues { it.value.flatMap { it.urls } }
-
-        playerCallback.playAd(adUrl, duration)
-
-        // Monitor ad progress
-        val progressJob = CoroutineScope(Dispatchers.Main).launch {
-            while (isActive && playerCallback.getPlaybackState() != PlaybackState.STATE_ENDED) {
-                val currentPosition = playerCallback.getCurrentPosition()
-                val totalDuration = duration * 1000L
-                val progressPercentage = if (totalDuration > 0) {
-                    (currentPosition.toFloat() / totalDuration.toFloat()) * 100
-                } else 0f
-
-                // Log progress for debugging
-                Log.d(TAG, "Ad progress: $progressPercentage% ($currentPosition/${totalDuration}ms)")
-
-                // Handle playback state changes
-                when (playerCallback.getPlaybackState()) {
-                    PlaybackState.STATE_READY -> {
-                        if (!adTrackingEvents.getOrDefault("loaded", false)) {
-                            sendStandardTrackingEvent("loaded")
-                        }
-                        if (currentPosition == 0L && !adTrackingEvents.getOrDefault("impression", false)) {
-                            sendStandardTrackingEvent("impression")
-                            sendStandardTrackingEvent("start")
-                        }
-                    }
-                    PlaybackState.STATE_ENDED -> {
-                        if (!adTrackingEvents.getOrDefault("complete", false)) {
-                            sendStandardTrackingEvent("complete")
-                        }
-                    }
-                }
-
-                // Track quartile events
-                when {
-                    progressPercentage >= 25 && !adTrackingEvents.getOrDefault("firstQuartile", false) -> {
-                        sendStandardTrackingEvent("firstQuartile")
-                    }
-                    progressPercentage >= 50 && !adTrackingEvents.getOrDefault("midpoint", false) -> {
-                        sendStandardTrackingEvent("midpoint")
-                    }
-                    progressPercentage >= 75 && !adTrackingEvents.getOrDefault("thirdQuartile", false) -> {
-                        sendStandardTrackingEvent("thirdQuartile")
-                    }
-                    progressPercentage >= 95 && !adTrackingEvents.getOrDefault("complete", false) -> {
-                        sendStandardTrackingEvent("complete")
-                    }
-                }
-
-                delay(250)
-            }
-        }
-
-        // Wait for ad to complete
-        while (playerCallback.getPlaybackState() != PlaybackState.STATE_ENDED) {
-            delay(100)
-        }
-
-        progressJob.cancel()
-        if (!adTrackingEvents.getOrDefault("complete", false)) {
-            sendStandardTrackingEvent("complete")
-        }
-    }
-
-    /**
-     * Send a standard tracking event.
-     */
-    private fun sendStandardTrackingEvent(eventType: String) {
-        currentStandardTracking[eventType]?.let { urls ->
-            if (!adTrackingEvents.getOrDefault(eventType, false)) {
-                Log.d(TAG, "Sending $eventType event with ${urls.size} URLs")
-                urls.forEach { sendTrackingPixel(it) }
-                adTrackingEvents[eventType] = true
-            }
-        }
-    }
-
-    /**
-     * Send a tracking pixel request.
-     */
-    private fun sendTrackingPixel(url: String) {
+    private fun sendTrackingPixel(url: String, eventType: String, adKey: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val decodedUrl = java.net.URLDecoder.decode(url, "UTF-8")
+                val decodedUrl = URLDecoder.decode(url, "UTF-8")
                 val connection = URL(decodedUrl).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 10_000
                 connection.readTimeout = 10_000
-                connection.setRequestProperty("User-Agent", "SGAI-AdTrackingSDK/1.0")
+                connection.setRequestProperty("User-Agent", "ExoPlayer-AdTracker/1.0")
                 connection.connect()
                 val responseCode = connection.responseCode
-                Log.d(TAG, "Tracking pixel sent to $decodedUrl: $responseCode")
+                Log.d("TrackingPixel", "[$eventType] Tracking sent for $adKey: $responseCode")
                 connection.disconnect()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send tracking pixel to $url: ${e.message}")
+                Log.e("TrackingPixel", "Failed to send [$eventType] tracking for $adKey: ${e.message}")
             }
         }
     }
 
     /**
-     * Handle mute/unmute events.
+     * Map PlayerManager event names to AdExtractor event names
      */
-    fun onAdMuted(isMuted: Boolean) {
-        if (isPlayingAd) {
-            sendStandardTrackingEvent(if (isMuted) "mute" else "unmute")
+    private fun mapEventName(eventType: String): String {
+        return when (eventType) {
+            "firstQuartile" -> "start"
+            "thirdQuartile" -> "complete"
+            else -> eventType
         }
     }
 
     /**
-     * Release resources.
+     * Send tracking event for specified ad and event type
      */
+    private fun sendTrackingEvent(adKey: String, eventType: String) {
+        val sentEvents = sentTrackingEvents.getOrPut(adKey) { mutableSetOf() }
+        if (sentEvents.contains(eventType)) {
+            return
+        }
+
+        var urls = adTrackingUrlsMap[adKey]?.get(eventType) ?: emptyList()
+
+        if (urls.isEmpty()) {
+            val mappedEventType = mapEventName(eventType)
+            urls = adTrackingUrlsMap[adKey]?.get(mappedEventType) ?: emptyList()
+        }
+
+        if (urls.isEmpty()) {
+            val mappedEventType = mapEventName(eventType)
+            urls = adExtractor?.getTrackingUrlsForAd(adKey)?.get(mappedEventType) ?: emptyList()
+        }
+
+        if (urls.isNotEmpty()) {
+            Log.d("TrackingEvent", "Sending $eventType event for ad $adKey with ${urls.size} URLs")
+            urls.forEach { url ->
+                sendTrackingPixel(url, eventType, adKey)
+            }
+            sentEvents.add(eventType)
+        } else {
+            Log.d("TrackingEvent", "No tracking URLs found for event $eventType on ad $adKey")
+        }
+    }
+
+    fun setPlayerViewContainer(container: ViewGroup) {
+        playerViewContainer = container
+    }
+
+    private val adViewProvider = object : AdViewProvider {
+        override fun getAdViewGroup(): android.view.ViewGroup? {
+            return playerViewContainer
+        }
+
+        override fun getAdOverlayInfos(): List<AdOverlayInfo> {
+            return playerViewContainer?.let {
+                listOf(AdOverlayInfo(it, AdOverlayInfo.PURPOSE_CONTROLS))
+            } ?: emptyList()
+        }
+    }
+
+    private val adsLoader: HlsInterstitialsAdsLoader = HlsInterstitialsAdsLoader(
+        dataSourceFactory
+    ).apply {
+        addListener(object : HlsInterstitialsAdsLoader.Listener {
+            override fun onAssetListLoadCompleted(
+                mediaItem: MediaItem,
+                adsId: Any,
+                adGroupIndex: Int,
+                adIndexInAdGroup: Int,
+                assetList: HlsInterstitialsAdsLoader.AssetList
+            ) {
+                val adKey = "${adsId}_${adGroupIndex}_${adIndexInAdGroup}"
+                Log.d("AdsLoader", "AssetList loaded for ad $adKey")
+
+                val trackingMap = extractTrackingUrlsFromAssetList(assetList, adKey)
+                if (trackingMap.isNotEmpty()) {
+                    setAdTrackingUrls(adKey, trackingMap)
+                    sendTrackingEvent(adKey, "loaded")
+                }
+            }
+
+            override fun onStart(mediaItem: MediaItem, adsId: Any, adViewProvider: AdViewProvider) {
+                Log.d("AdsLoader", "AdsLoader started for adsId: $adsId")
+            }
+
+            override fun onPrepareError(mediaItem: MediaItem, adsId: Any, adGroupIndex: Int, adIndexInAdGroup: Int, exception: IOException) {
+                Log.e("AdsLoader", "Ad prepare error for adsId: $adsId, adGroup: $adGroupIndex, adIndex: $adIndexInAdGroup", exception)
+            }
+
+            override fun onAssetListLoadFailed(mediaItem: MediaItem, adsId: Any, adGroupIndex: Int, adIndexInAdGroup: Int, ioException: IOException?, cancelled: Boolean) {
+                Log.e("AdsLoader", "Asset list load failed for adsId: $adsId: ${ioException?.message ?: "Cancelled: $cancelled"}", ioException)
+            }
+
+            override fun onContentTimelineChanged(mediaItem: MediaItem, adsId: Any, hlsContentTimeline: Timeline) {
+                Log.d("AdsLoader", "Content timeline changed for adsId: $adsId")
+            }
+
+            override fun onAdCompleted(mediaItem: MediaItem, adsId: Any, adGroupIndex: Int, adIndexInAdGroup: Int) {
+                val adKey = "${adsId}_${adGroupIndex}_${adIndexInAdGroup}"
+                Log.d("AdsLoader", "Ad completed for ad $adKey")
+                sendTrackingEvent(adKey, "complete")
+            }
+        })
+    }
+
+    data class VastTracking(
+        val impression: List<String>,
+        val firstQuartile: List<String>,
+        val midpoint: List<String>,
+        val thirdQuartile: List<String>,
+        val complete: List<String>
+    )
+
+    fun parseVastTracking(vastXml: String): VastTracking {
+        fun extract(tag: String): List<String> =
+            Regex("""<$tag(?:\s+event="([^"]+)")?>\s*<!\[CDATA\[(.*?)\]\]>\s*</$tag>""")
+                .findAll(vastXml)
+                .map { it.groupValues[2] }
+                .toList()
+
+        return VastTracking(
+            impression = extract("Impression"),
+            firstQuartile = extract("Tracking event=\"firstQuartile\""),
+            midpoint = extract("Tracking event=\"midpoint\""),
+            thirdQuartile = extract("Tracking event=\"thirdQuartile\""),
+            complete = extract("Tracking event=\"complete\"")
+        )
+    }
+
+    private fun vastTrackingToMap(vastTracking: VastTracking): Map<String, List<String>> {
+        return mapOf(
+            "impression" to vastTracking.impression,
+            "firstQuartile" to vastTracking.firstQuartile,
+            "midpoint" to vastTracking.midpoint,
+            "thirdQuartile" to vastTracking.thirdQuartile,
+            "complete" to vastTracking.complete
+        ).filterValues { it.isNotEmpty() }
+    }
+
+    private fun extractTrackingUrlsFromAssetList(
+        assetList: HlsInterstitialsAdsLoader.AssetList,
+        adKey: String
+    ): Map<String, List<String>> {
+        val trackingMap = mutableMapOf<String, List<String>>()
+
+        for (attribute in assetList.stringAttributes) {
+            if (attribute.name.contains("vast", ignoreCase = true) ||
+                attribute.value.contains("<VAST", ignoreCase = true)) {
+
+                val trackingInfo = parseVastTracking(attribute.value)
+                val vastTrackingMap = vastTrackingToMap(trackingInfo)
+
+                vastTrackingMap.forEach { (eventType, urls) ->
+                    val existingUrls = trackingMap[eventType] ?: emptyList()
+                    trackingMap[eventType] = existingUrls + urls
+                }
+
+                Log.d("VastTracking", "VAST tracking extracted for ad $adKey with ${vastTrackingMap.size} event types")
+            }
+        }
+
+        return trackingMap
+    }
+
+    val player: ExoPlayer = ExoPlayer.Builder(context)
+        .build()
+        .apply {
+            addAnalyticsListener(EventLogger())
+            addAnalyticsListener(object : AnalyticsListener {
+                override fun onPlayerStateChanged(
+                    eventTime: AnalyticsListener.EventTime,
+                    playWhenReady: Boolean,
+                    playbackState: Int
+                ) {
+                    when (playbackState) {
+                        Player.STATE_READY -> {
+                            if (this@SGAIAdTracker::player.get().isPlayingAd) {
+                                val adGroupIndex =
+                                    this@SGAIAdTracker::player.get().currentAdGroupIndex
+                                val adIndexInAdGroup =
+                                    this@SGAIAdTracker::player.get().currentAdIndexInAdGroup
+                                val currentAdsId = "ad-session-1"
+                                val adKey = "${currentAdsId}_${adGroupIndex}_${adIndexInAdGroup}"
+                                sendTrackingEvent(adKey, "impression")
+                                sendTrackingEvent(adKey, "start")
+                            }
+                        }
+                    }
+                }
+
+                override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
+                    Log.e("ExoPlayer", "Player error: ${error.message}", error)
+                }
+
+                override fun onTimelineChanged(eventTime: AnalyticsListener.EventTime, reason: Int) {
+                    Log.d("ExoPlayer", "Timeline changed")
+                }
+
+                override fun onLoadError(
+                    eventTime: AnalyticsListener.EventTime,
+                    loadEventInfo: LoadEventInfo,
+                    mediaLoadData: MediaLoadData,
+                    error: IOException,
+                    wasCanceled: Boolean
+                ) {
+                    Log.e("ExoPlayer", "Load error for ${loadEventInfo.uri}: ${error.message}", error)
+                }
+            })
+        }
+
+    private var lastAdQuartile = 0
+    private var currentAdKey: String? = null
+    private val adProgressHandler = Handler(Looper.getMainLooper())
+    private val adProgressRunnable = object : Runnable {
+        override fun run() {
+            trackAdQuartiles()
+            adProgressHandler.postDelayed(this, 250)
+        }
+    }
+
+    private fun startAdProgressTracking() {
+        adProgressHandler.post(adProgressRunnable)
+    }
+
+    private fun stopAdProgressTracking() {
+        adProgressHandler.removeCallbacks(adProgressRunnable)
+        lastAdQuartile = 0
+    }
+
+    private fun trackAdQuartiles() {
+        if (player.isPlayingAd && currentAdKey != null) {
+            val duration = player.duration
+            val position = player.currentPosition
+            if (duration > 0) {
+                val progress = position.toFloat() / duration
+                val quartile = when {
+                    progress >= 0.75f -> 3
+                    progress >= 0.5f -> 2
+                    progress >= 0.25f -> 1
+                    else -> 0
+                }
+                if (quartile > lastAdQuartile) {
+                    lastAdQuartile = quartile
+                    when (quartile) {
+                        1 -> sendTrackingEvent(currentAdKey!!, "firstQuartile")
+                        2 -> sendTrackingEvent(currentAdKey!!, "midpoint")
+                        3 -> sendTrackingEvent(currentAdKey!!, "thirdQuartile")
+                    }
+                }
+            }
+        } else {
+            lastAdQuartile = 0
+        }
+    }
+
+    init {
+        adsLoader.setPlayer(player)
+        Log.d("PlayerManager", "PlayerManager initialized")
+
+        player.addListener(object : Player.Listener {
+            private var lastAdIndex = -1
+            private var lastAdGroupIndex = -1
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                if (player.isPlayingAd) {
+                    val adGroupIndex = player.currentAdGroupIndex
+                    val adIndexInAdGroup = player.currentAdIndexInAdGroup
+                    if (adGroupIndex != lastAdGroupIndex || adIndexInAdGroup != lastAdIndex) {
+                        lastAdGroupIndex = adGroupIndex
+                        lastAdIndex = adIndexInAdGroup
+                        lastAdQuartile = 0
+
+                        currentAdKey = "ad-session-1_${adGroupIndex}_${adIndexInAdGroup}"
+
+                        sendTrackingEvent(currentAdKey!!, "impression")
+                        sendTrackingEvent(currentAdKey!!, "start")
+                        startAdProgressTracking()
+                    }
+                } else if (lastAdGroupIndex != -1 || lastAdIndex != -1) {
+                    if (currentAdKey != null) {
+                        sendTrackingEvent(currentAdKey!!, "complete")
+                    }
+                    lastAdGroupIndex = -1
+                    lastAdIndex = -1
+                    currentAdKey = null
+                    stopAdProgressTracking()
+                }
+            }
+        })
+    }
+
+    fun setMainMediaItem(streamUrl: String) {
+        SGAIAdTrackingUrlsExtractor(streamUrl).also {
+            this.adExtractor = it
+            it.setAdsId("ad-session-1")
+        }
+        this.adExtractor?.startMonitoring()
+
+        Log.d("PlayerManager", "Setting main media item: $streamUrl")
+
+        try {
+            val mediaItem = MediaItem.Builder()
+                .setUri(streamUrl.toUri())
+                .apply {
+                    setAdsConfiguration(
+                        AdsConfiguration.Builder("placeholder".toUri())
+                            .setAdsId("ad-session-1")
+                            .build()
+                    )
+                }
+                .build()
+
+            val adsMediaSourceFactory = HlsInterstitialsAdsLoader.AdsMediaSourceFactory(
+                adsLoader,
+                adViewProvider,
+                context
+            )
+            val adsMediaSource = adsMediaSourceFactory.createMediaSource(mediaItem)
+
+            player.setMediaSource(adsMediaSource)
+            player.prepare()
+            Log.d("PlayerManager", "Player prepared with HLS interstitials support")
+
+        } catch (e: Exception) {
+            Log.e("PlayerManager", "Error preparing player: ${e.message}", e)
+        }
+    }
+
+    fun play() {
+        Log.d("PlayerManager", "Playing media")
+        player.playWhenReady = true
+        player.play()
+    }
+
+    fun pause() {
+        Log.d("PlayerManager", "Pausing media")
+        player.pause()
+    }
+
     fun release() {
-        stopMonitoring()
-        Log.d(TAG, "AdTrackingSDK released")
+        Log.d("PlayerManager", "Releasing player and ads loader")
+        adExtractor?.release()
+        adsLoader.release()
+        player.release()
     }
 
-    /**
-     * Retrofit service interface for fetching ad assets.
-     */
-    interface AdService {
-        @GET
-        suspend fun getAdAssets(@Url url: String): AdResponse
+    fun setTrackingUrlsForAd(adKey: String, trackingUrls: Map<String, List<String>>) {
+        setAdTrackingUrls(adKey, trackingUrls)
     }
 
-    /**
-     * Data classes for parsing ad responses.
-     */
-    data class AdResponse(
-        @SerializedName("ASSETS") val assets: List<AdAsset>,
-        @SerializedName("X-AD-CREATIVE-SIGNALING") val podSignaling: PodSignaling? = null
-    )
-
-    data class PodSignaling(
-        val version: Int,
-        val type: String,
-        val payload: PodPayload
-    )
-
-    data class PodPayload(
-        val duration: Long,
-        val tracking: List<AdTrackingEvent>? = null
-    )
-
-    data class AdAsset(
-        @SerializedName("URI") val uri: String,
-        @SerializedName("DURATION") val duration: Long,
-        @SerializedName("X-AD-CREATIVE-SIGNALING") val signaling: AdCreativeSignaling? = null
-    )
-
-    data class AdCreativeSignaling(
-        val version: Int,
-        val type: String,
-        val payload: AdPayload
-    )
-
-    data class AdPayload(
-        val type: String,
-        val start: Long,
-        val duration: Long,
-        val identifiers: List<AdIdentifier>,
-        val tracking: List<AdTrackingEvent>
-    )
-
-    data class AdIdentifier(
-        val scheme: String,
-        val value: String
-    )
-
-    data class AdTrackingEvent(
-        val type: String,
-        val urls: List<String>,
-        val offset: String? = null
-    )
+    fun getTrackingUrlsForAd(adKey: String): Map<String, List<String>>? {
+        return adTrackingUrlsMap[adKey]
+    }
 }
