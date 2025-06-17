@@ -14,7 +14,10 @@ import java.net.URLDecoder
 import java.util.UUID
 import kotlinx.coroutines.NonCancellable.isActive
 
-class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
+class SGAIAdTrackingUrlsExtractor(
+    private val streamUrl: String,
+    private val onAdBreakFound: ((adUri: String) -> Unit)? = null
+) {
     private val TAG = "SGAIAdTrackingUrlsExtractor"
     private val manifestRefreshInterval = 15_000L
     private var monitoringJob: Job? = null
@@ -22,17 +25,28 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
     private val adTrackingUrlsMap: MutableMap<String, Map<String, List<String>>> = mutableMapOf()
     private var currentAdsId: String = "ad-session-1"
 
-    /**
-     * Set the ads session ID to match what PlayerManager uses
-     */
+    // Track pod events
+    private val podTrackingCallbacks: MutableList<(String, String) -> Unit> = mutableListOf()
+
+    private fun extractAssetUri(line: String): String? {
+        val attributes = line.split(",")
+        for (attribute in attributes) {
+            if (attribute.startsWith("X-ASSET-URI=")) {
+                return attribute.substringAfter("X-ASSET-URI=\"").substringBefore("\"")
+            }
+        }
+        return null
+    }
+
     fun setAdsId(adsId: String) {
         currentAdsId = adsId
         Log.d(TAG, "Set ads session ID to: $adsId")
     }
 
-    /**
-     * Start monitoring the stream URL for ad cues
-     */
+    fun addPodTrackingCallback(callback: (eventType: String, podId: String) -> Unit) {
+        podTrackingCallbacks.add(callback)
+    }
+
     fun startMonitoring() {
         monitoringJob = CoroutineScope(Dispatchers.Main).launch {
             monitorLiveStream(streamUrl)
@@ -40,17 +54,11 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
         Log.d(TAG, "Started manifest monitoring for: $streamUrl")
     }
 
-    /**
-     * Stop monitoring the stream
-     */
     fun stopMonitoring() {
         monitoringJob?.cancel()
         Log.d(TAG, "Stopped manifest monitoring")
     }
 
-    /**
-     * Monitor live stream for ad cues
-     */
     private suspend fun monitorLiveStream(streamUrl: String) {
         while (isActive) {
             val manifestContent = withContext(Dispatchers.IO) {
@@ -72,14 +80,10 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
                     parseAdCues(manifestContent)
                 }
             }
-
             delay(manifestRefreshInterval)
         }
     }
 
-    /**
-     * Fetch manifest content from URL
-     */
     private fun fetchManifestContent(urlString: String): String? {
         return try {
             val url = URL(urlString)
@@ -97,9 +101,6 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
         }
     }
 
-    /**
-     * Extract variant URL from master playlist
-     */
     private fun extractVariantUrl(manifestContent: String, baseUrl: String): String? {
         val lines = manifestContent.split("\n")
         for (i in lines.indices) {
@@ -110,9 +111,6 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
         return null
     }
 
-    /**
-     * Resolve relative URLs against base URL
-     */
     private fun resolveUrl(baseUrl: String, relativeUrl: String): String {
         return if (relativeUrl.startsWith("http")) {
             relativeUrl
@@ -126,9 +124,6 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
         }
     }
 
-    /**
-     * Parse ad cues from manifest and extract tracking URLs
-     */
     private suspend fun parseAdCues(manifestContent: String) {
         val lines = manifestContent.split("\n")
         var adBreakId: String? = null
@@ -136,19 +131,30 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
         for (line in lines) {
             if (line.startsWith("#EXT-X-DATERANGE")) {
                 adBreakId = extractAdBreakId(line)
-                val assetListUrl = extractAssetListUrl(line)?.replace("localhost", "10.0.2.2")
 
+                // Check for X-ASSET-LIST (live/future SGAI)
+                val assetListUrl = extractAssetListUrl(line)?.replace("localhost", "10.0.2.2")
                 if (assetListUrl != null) {
                     Log.d(TAG, "Found ad break: $adBreakId with asset list: $assetListUrl")
                     extractTrackingUrlsFromAssetList(assetListUrl, adBreakId)
+                }
+
+                // Check for X-ASSET-URI (VoD SGAI, supported by ExoPlayer today)
+                val assetUri = extractAssetUri(line)
+                if (assetUri != null) {
+                    Log.d(TAG, "Found ad break: $adBreakId with asset URI: $assetUri")
+                    extractTrackingUrlsFromAssetList(assetUri, adBreakId)
+
+
+                    println("###### AdBreak found: $adBreakId with asset URI: $assetUri")
+                    // ----- CALL THE CALLBACK! -----
+                    onAdBreakFound?.invoke(assetUri)
                 }
             }
         }
     }
 
-    /**
-     * Extract ad break ID from DATERANGE tag
-     */
+
     private fun extractAdBreakId(line: String): String {
         val attributes = line.split(",")
         for (attribute in attributes) {
@@ -159,9 +165,6 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
         return UUID.randomUUID().toString()
     }
 
-    /**
-     * Extract asset list URL from DATERANGE tag
-     */
     private fun extractAssetListUrl(line: String): String? {
         val attributes = line.split(",")
         for (attribute in attributes) {
@@ -179,8 +182,10 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
         try {
             val adResponse = fetchAdAssets(assetListUrl)
             processAdResponse(adResponse, adBreakId)
+            Log.d("****** TrackingDebug", "Parsed adTrackingUrlsMap: $adTrackingUrlsMap")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to extract tracking URLs from $assetListUrl: ${e.message}")
+            Log.e(TAG, "****** Failed to extract tracking URLs from $assetListUrl: ${e.message}")
+            Log.d("*** TrackingDebug", "Parsed adTrackingUrlsMap: $adTrackingUrlsMap")
         }
     }
 
@@ -207,6 +212,7 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
                 val podKey = "pod_${adBreakId}"
                 adTrackingUrlsMap[podKey] = podTrackingMap
                 Log.d(TAG, "Pod tracking URLs extracted for $podKey: ${podTrackingMap.keys}")
+                triggerPodEvent(SGAIAdTrackingEvent.POD_START.eventName, podKey)
             }
         }
 
@@ -226,48 +232,43 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
         Log.d(TAG, "Total ads with tracking: ${adTrackingUrlsMap.size}")
     }
 
-    /**
-     * Group tracking events by type and extract URLs
-     */
+    private fun triggerPodEvent(eventType: String, podId: String) {
+        podTrackingCallbacks.forEach { callback ->
+            callback(eventType, podId)
+        }
+    }
+
     private fun groupTrackingByType(trackingEvents: List<AdTrackingEvent>): Map<String, List<String>> {
         return trackingEvents.groupBy { it.type }
             .mapValues { entry -> entry.value.flatMap { it.urls } }
             .filterValues { it.isNotEmpty() }
     }
 
-    /**
-     * Get tracking URLs for specific ad
-     */
     fun getTrackingUrlsForAd(adId: String): Map<String, List<String>>? {
         return adTrackingUrlsMap[adId]
     }
 
-    /**
-     * Get all tracking URLs map
-     */
     fun getAllTrackingUrls(): Map<String, Map<String, List<String>>> {
         return adTrackingUrlsMap.toMap()
     }
 
-    /**
-     * Get impression URLs for specific ad
-     */
     fun getImpressionUrlsForAd(adId: String): List<String> {
         return adTrackingUrlsMap[adId]?.get("impression") ?: emptyList()
     }
 
-    /**
-     * Send impression tracking for specific ad
-     */
     fun sendImpressionTracking(adId: String) {
         adTrackingUrlsMap[adId]?.get("impression")?.forEach { url ->
             sendTrackingPixel(url, "impression")
         }
     }
 
-    /**
-     * Send tracking pixel
-     */
+    fun sendPodEndTracking(podId: String) {
+        adTrackingUrlsMap[podId]?.get(SGAIAdTrackingEvent.POD_END.eventName)?.forEach { url ->
+            sendTrackingPixel(url, SGAIAdTrackingEvent.POD_END.eventName)
+        }
+        triggerPodEvent(SGAIAdTrackingEvent.POD_END.eventName, podId)
+    }
+
     private fun sendTrackingPixel(url: String, eventType: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -287,11 +288,9 @@ class SGAIAdTrackingUrlsExtractor(private val streamUrl: String) {
         }
     }
 
-    /**
-     * Release resources
-     */
     fun release() {
         stopMonitoring()
+        podTrackingCallbacks.clear()
         Log.d(TAG, "AdExtractor released")
     }
 
