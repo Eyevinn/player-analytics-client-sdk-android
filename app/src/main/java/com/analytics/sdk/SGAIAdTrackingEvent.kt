@@ -7,7 +7,6 @@ package com.analytics.sdk
 enum class SGAIAdTrackingEvent(val eventName: String, val description: String) {
 
     // Core impression and playback events
-    LOADED("loaded", "Ad creative has been loaded and is ready to play"),
     IMPRESSION("impression", "Ad creative has been displayed/rendered"),
     START("start", "Ad playback has started"),
 
@@ -24,27 +23,29 @@ enum class SGAIAdTrackingEvent(val eventName: String, val description: String) {
     // Ad pod events
     POD_START("podStart", "Ad pod/break has started"),
     POD_END("podEnd", "Ad pod/break has Ended");
+}
 
-    companion object {
-        /**
-         * Get tracking event by name
-         */
-        fun fromEventName(eventName: String): SGAIAdTrackingEvent? {
-            return values().find { it.eventName.equals(eventName, ignoreCase = true) }
-        }
+// Utility: normalize event names
+fun normalizeEventName(eventName: String): String {
+    return when (eventName.lowercase()) {
+        "podstart", "pod_start" -> "podStart"
+        "podend", "pod_end" -> "podEnd"
+        "firstquartile", "first_quartile" -> "firstQuartile"
+        "midpoint", "mid_point" -> "midpoint"
+        "thirdquartile", "third_quartile" -> "thirdQuartile"
+        "complete", "end" -> "complete"
+        "resume" -> "resume"
+        "pause" -> "pause"
+        "impression" -> "impression"
+        else -> eventName.lowercase()
+    }
+}
 
-        /**
-         * Get all quartile events
-         */
-        fun getQuartileEvents(): List<SGAIAdTrackingEvent> {
-            return listOf(FIRST_QUARTILE, MIDPOINT, THIRD_QUARTILE)
-        }
-
-        /**
-         * Get all core playback events
-         */
-        fun getCoreEvents(): List<SGAIAdTrackingEvent> {
-            return listOf(LOADED, IMPRESSION, START, COMPLETE)
-        }
+fun mapEventName(eventType: String): String {
+    return when (eventType.lowercase()) {
+        "impression" -> "start"    // Fallback: map impression to start
+        "firstquartile" -> "start"
+        "thirdquartile" -> "complete"
+        else -> eventType
     }
 }

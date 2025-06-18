@@ -15,108 +15,11 @@ class SGAIAdImpressionSender {
     private val TAG = "SGAIAdImpressionSender"
 
     /**
-     * Send impression tracking pixel for specific ad and event type
-     */
-    fun sendImpressionPixel(url: String, eventType: SGAIAdTrackingEvent, adKey: String) {
-        sendTrackingPixel(url, eventType.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for loaded event
-     */
-    fun sendLoadedImpression(url: String, adKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.LOADED.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for impression event
-     */
-    fun sendImpressionImpression(url: String, adKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.IMPRESSION.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for start event
-     */
-    fun sendStartImpression(url: String, adKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.START.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for first quartile event
-     */
-    fun sendFirstQuartileImpression(url: String, adKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.FIRST_QUARTILE.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for midpoint event
-     */
-    fun sendMidpointImpression(url: String, adKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.MIDPOINT.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for third quartile event
-     */
-    fun sendThirdQuartileImpression(url: String, adKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.THIRD_QUARTILE.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for complete event
-     */
-    fun sendCompleteImpression(url: String, adKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.COMPLETE.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for pause event
-     */
-    fun sendPauseImpression(url: String, adKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.PAUSE.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for resume event
-     */
-    fun sendResumeImpression(url: String, adKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.RESUME.eventName, adKey)
-    }
-
-    /**
-     * Send impression tracking for pod start event
-     */
-    fun sendPodStartImpression(url: String, podKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.POD_START.eventName, podKey)
-    }
-
-    /**
-     * Send impression tracking for pod complete event
-     */
-    fun sendPodEndImpression(url: String, podKey: String) {
-        sendTrackingPixel(url, SGAIAdTrackingEvent.POD_END.eventName, podKey)
-    }
-
-    /**
      * Send multiple impression pixels for the same event
      */
     fun sendMultipleImpressions(urls: List<String>, eventType: SGAIAdTrackingEvent, adKey: String) {
         urls.forEach { url ->
             sendTrackingPixel(url, eventType.eventName, adKey)
-        }
-    }
-
-    /**
-     * Send impression tracking for specific ad with list of URLs
-     */
-    fun sendImpressionTracking(adKey: String, trackingUrls: Map<String, List<String>>) {
-        trackingUrls.forEach { (eventType, urls) ->
-            SGAIAdTrackingEvent.fromEventName(eventType)?.let { event ->
-                urls.forEach { url ->
-                    sendTrackingPixel(url, eventType, adKey)
-                }
-            }
         }
     }
 
@@ -136,7 +39,7 @@ class SGAIAdImpressionSender {
                 connection.setRequestProperty("X-Ad-Key", adKey)
                 connection.connect()
                 val responseCode = connection.responseCode
-                Log.d(TAG, "[$eventType] Tracking sent for $adKey: $responseCode")
+                Log.d(TAG, "[$eventType] Tracking sent for $url: $responseCode")
                 connection.disconnect()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send [$eventType] tracking for $adKey: ${e.message}")

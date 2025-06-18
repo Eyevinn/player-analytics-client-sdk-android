@@ -4,6 +4,7 @@ A comprehensive video player SDK for Android that combines ExoPlayer with built-
 
 ## Features
 
+- **Unified Video Analytics Tracker**: Single class handles both video analytics and SGAI ad tracking
 - **Integrated ExoPlayer**: Built-in video player with no additional setup required
 - **Comprehensive Analytics**: Automatic tracking of key video metrics (play, pause, buffering, etc.)
 - **SGAI Ad Tracking**: Complete Server-Guided Ad Insertion tracking with automatic ad detection
@@ -71,11 +72,50 @@ Add the following permissions to your `AndroidManifest.xml`:
 
 ---
 
-## Section 1: Video Analytics Tracking
+## ⚠️ Current Limitations & Requirements
+
+### **ExoPlayer Version Compatibility**
+
+**This SDK is designed for ExoPlayer version 1.8.0-alpha01 and later versions.**
+
+Due to current limitations in Android ExoPlayer's HLS interstitials implementation, SGAI ad tracking has specific requirements that will be improved in future ExoPlayer releases.
+
+### 🚨 **Important: Fragmented MP4 Requirement for SGAI Ads**
+
+**The SDK is optimized for fragmented MP4 ads due to ExoPlayer's current limitations with regular MP4 files in HLS interstitials.**
+
+- ✅ **Use**: Fragmented MP4 (`.mp4` with fragmentation)
+- ❌ **Avoid**: Regular MP4, WebM, or other formats
+- **Why**: ExoPlayer 1.8.0-alpha01 has known issues with non-fragmented MP4 in HLS interstitials
+
+**⚠️ What happens with non-fragmented ads:**
+If you use regular (non-fragmented) MP4 ads, you will encounter this error:
+```
+java.lang.NullPointerException
+at androidx.media3.common.util.Assertions.checkNotNull(Assertions.java:155)
+at androidx.media3.extractor.mp4.FragmentedMp4Extractor.onMoovContainerAtomRead(FragmentedMp4Extractor.java:685)
+```
+
+**Ensure your ad creatives are encoded as fragmented MP4:**
+```bash
+# Example FFmpeg command for fragmented MP4
+ffmpeg -i input.mp4 -movflags frag_keyframe+empty_moov -f mp4 output_fragmented.mp4
+```
+
+**Verification command:**
+```bash
+# Check if MP4 is fragmented
+ffprobe -v quiet -show_entries format=format_name -of default=noprint_wrappers=1:nokey=1 your_ad.mp4
+# Should show: mov,mp4,m4a,3gp,3g2,mj2 (fragmented)
+```
+
+---
+
+## Section 1: Video Analytics Tracking (No Ads)
 
 Track comprehensive video playback analytics including user engagement, performance metrics, and viewing behavior.
 
-### Quick Start - Analytics
+### Quick Start - Video Analytics Only
 
 #### Basic Implementation
 
@@ -83,11 +123,18 @@ Track comprehensive video playback analytics including user engagement, performa
 // Initialize ExoPlayer
 val exoPlayer = ExoPlayer.Builder(context).build()
 
-// Initialize Analytics SDK
-val videoAnalyticsTracker = VideoAnalyticsTracker.Builder(exoPlayer)
-    .setContentTitle("My Video")
+// Initialize Video Analytics Tracker (no ads)
+val videoAnalyticsTracker = VideoAnalyticsTracker.Builder(context, exoPlayer)
     .setEventSinkUrl("https://your-analytics-endpoint.com")
+    .setContentTitle("My Video")
+    .setIsLive(false)
+    .setDeviceType("Android Sample App")
+    .setHeartbeatInterval(30_000L)
+    // Note: SGAI tracking is disabled by default
     .build()
+
+// Set media item
+videoAnalyticsTracker.setMainMediaItem("https://example.com/video.m3u8")
 
 // Add player view to your layout
 val playerView = PlayerView(context).apply {
@@ -95,13 +142,11 @@ val playerView = PlayerView(context).apply {
 }
 layout.addView(playerView)
 
-// Load and play media
-exoPlayer.setMediaItem(MediaItem.fromUri("https://example.com/video.m3u8"))
-exoPlayer.prepare()
-exoPlayer.playWhenReady = true
-
 // Start tracking analytics
 videoAnalyticsTracker.startTracking()
+
+// Start playback
+exoPlayer.play()
 
 // Remember to release resources when done
 override fun onDestroy() {
@@ -115,11 +160,26 @@ override fun onDestroy() {
 
 ```kotlin
 @Composable
-fun VideoPlayerScreen(exoPlayer: ExoPlayer, videoAnalyticsTracker: VideoAnalyticsTracker) {
+fun VideoPlayerScreen() {
+    val context = LocalContext.current
+    val exoPlayer = remember { ExoPlayer.Builder(context).build() }
+    val videoAnalyticsTracker = remember {
+        VideoAnalyticsTracker.Builder(context, exoPlayer)
+            .setEventSinkUrl("https://your-analytics-endpoint.com")
+            .setContentTitle("Sample Video")
+            .build()
+    }
+    
     val playerView = remember {
-        PlayerView(LocalContext.current).apply {
+        PlayerView(context).apply {
             player = exoPlayer
         }
+    }
+
+    LaunchedEffect(Unit) {
+        videoAnalyticsTracker.setMainMediaItem("https://example.com/video.m3u8")
+        videoAnalyticsTracker.startTracking()
+        exoPlayer.play()
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -145,76 +205,168 @@ fun VideoPlayerScreen(exoPlayer: ExoPlayer, videoAnalyticsTracker: VideoAnalytic
 - **User Engagement**: Watch time, completion rates
 - **Error Tracking**: Playback failures and network issues
 - **Quality Metrics**: Video resolution, audio quality changes
+- **Heartbeat**: Periodic tracking events (configurable interval)
 
 ---
 
-## Section 2: SGAI Ad Tracking
+## Section 2: SGAI Ad Tracking + Video Analytics
 
-Track Server-Guided Ad Insertion ads with comprehensive event monitoring and VAST support.
+Track both Server-Guided Ad Insertion ads and comprehensive video analytics using the unified VideoAnalyticsTracker.
 
-### Quick Start - SGAI Ad Tracking
+### Quick Start - SGAI + Video Analytics
 
 #### Basic SGAI Implementation
 
 ```kotlin
-class MainActivity : ComponentActivity() {
-    private lateinit var adTracker: SGAIAdTracker
-    private lateinit var analyticsManager: AnalyticsManager
+class SGAIPlayerActivity : ComponentActivity() {
+    private lateinit var videoAnalyticsTracker: VideoAnalyticsTracker
+    private lateinit var playerView: PlayerView
+    
+    private val sgaiStreamUrl = "http://10.0.2.2:3333/x36xhzz/x36xhzz.m3u8"
+    private val eventSinkUrl = "https://your-analytics-endpoint.com"
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Initialize the SGAI ad tracker
-        adTracker = SGAIAdTracker(this)
+        // Create ExoPlayer instance
+        val player = ExoPlayer.Builder(this).build()
         
-        // Initialize analytics manager
-        analyticsManager = AnalyticsManager(adTracker.player, "https://your-analytics-endpoint.com")
+        // Create unified VideoAnalyticsTracker with SGAI ad tracking enabled
+        videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, player)
+            .setEventSinkUrl(eventSinkUrl)
+            .setContentTitle("SGAI Live Stream")
+            .setIsLive(true)
+            .setDeviceType("Android SGAI Player")
+            .setHeartbeatInterval(30_000L)
+            .enableSGAIAdTracking(true)  // Enable SGAI ad tracking
+            .build()
         
-        // Set your HLS stream URL with SGAI ads
-        val streamUrl = "https://your-hls-stream-with-ads.m3u8"
-        adTracker.setMainMediaItem(streamUrl)
-        
-        // Create and set up PlayerView
-        val playerView = PlayerView(this).apply {
-            player = adTracker.player
+        // Create PlayerView and set the player
+        playerView = PlayerView(this).apply {
+            this.player = player
         }
         
-        // Optional: Set container for ad overlays
-        adTracker.setPlayerViewContainer(playerView as ViewGroup)
+        // Set the player view container for ad rendering (required for SGAI)
+        videoAnalyticsTracker.setPlayerViewContainer(playerView)
+        
+        // Set the main media item with SGAI support
+        videoAnalyticsTracker.setMainMediaItem(sgaiStreamUrl)
+        
+        setContent {
+            MaterialTheme {
+                SGAIVideoPlayerScreen(playerView)
+            }
+        }
     }
     
     override fun onStart() {
         super.onStart()
-        analyticsManager.startTracking()
-        adTracker.play()
+        // Start unified tracking (handles both video analytics and SGAI ad tracking)
+        videoAnalyticsTracker.startTracking()
+        // Start playback
+        playerView.player?.let { player ->
+            player.playWhenReady = true
+            player.play()
+        }
     }
     
     override fun onStop() {
         super.onStop()
-        analyticsManager.stopTracking("User left the app")
-        adTracker.pause()
+        // Pause playback
+        playerView.player?.pause()
+        // Stop tracking with reason
+        videoAnalyticsTracker.stopTracking("User left the app")
     }
     
     override fun onDestroy() {
         super.onDestroy()
-        analyticsManager.release()
-        adTracker.release()
+        // Release all resources
+        videoAnalyticsTracker.release()
+        playerView.player?.release()
+    }
+}
+```
+
+#### Simple Video Analytics (No SGAI)
+
+```kotlin
+class SimplePlayerActivity : ComponentActivity() {
+    private lateinit var exoPlayer: ExoPlayer
+    private lateinit var videoAnalyticsTracker: VideoAnalyticsTracker
+    private lateinit var playerView: PlayerView
+
+    private val assetUrl = "https://example.com/video.m3u8"
+    private val eventSinkUrl = "https://your-analytics-endpoint.com"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Create ExoPlayer instance
+        exoPlayer = ExoPlayer.Builder(this).build().apply {
+            playWhenReady = false
+        }
+
+        // Create VideoAnalyticsTracker with SGAI tracking disabled (default)
+        videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, exoPlayer)
+            .setEventSinkUrl(eventSinkUrl)
+            .setContentTitle("Sample Video")
+            .setIsLive(false)
+            .setDeviceType("Android Sample App")
+            .setHeartbeatInterval(30_000L)
+            // Note: enableSGAIAdTracking(false) is the default
+            .build()
+
+        // Set the main media item (simple video, no ads)
+        videoAnalyticsTracker.setMainMediaItem(assetUrl)
+
+        // Create PlayerView
+        playerView = PlayerView(this).apply {
+            player = exoPlayer
+        }
+
+        setContent {
+            MaterialTheme {
+                VideoPlayerScreen(playerView)
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        videoAnalyticsTracker.startTracking()
+        exoPlayer.play()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        exoPlayer.pause()
+        videoAnalyticsTracker.stopTracking("User left the app")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        videoAnalyticsTracker.release()
+        exoPlayer.release()
     }
 }
 ```
 
 ### SGAI Ad Events Tracked
 
-The SDK automatically tracks these ad events:
+The SDK automatically tracks these ad events when SGAI tracking is enabled:
 
 | Event | Description | Trigger |
 |-------|-------------|---------|
-| `impression` | Ad view started | When ad begins playing |
-| `start` | Ad playback started | Same as impression |
+| `impression` | Ad view started | When ad begins playing (onStart) |
+| `start` | Ad playback started | Same as impression (onStart) |
 | `firstQuartile` | 25% of ad played | At 25% progress |
 | `midpoint` | 50% of ad played | At 50% progress |
 | `thirdQuartile` | 75% of ad played | At 75% progress |
-| `complete` | Ad fully played | At 100% progress |
+| `complete` | Ad fully played | When ad completes (onAssetListLoadCompleted) |
+| `pause` | Ad playback paused | When user pauses during ad |
+| `resume` | Ad playback resumed | When user resumes after pause |
+| `podStart` | Ad pod started | First ad in a group |
+| `podEnd` | Ad pod ended | Last ad in a group |
 
 ### Advanced SGAI Usage
 
@@ -230,7 +382,7 @@ val trackingUrls = mapOf(
     "complete" to listOf("https://tracking.example.com/complete")
 )
 
-adTracker.setTrackingUrlsForAd("ad-session-1_0_0", trackingUrls)
+videoAnalyticsTracker.setAdTrackingUrls("ad-session-1_0_0", trackingUrls)
 ```
 
 #### Retrieve Tracking Data
@@ -238,18 +390,32 @@ adTracker.setTrackingUrlsForAd("ad-session-1_0_0", trackingUrls)
 ```kotlin
 // Get tracking URLs for a specific ad
 val adKey = "ad-session-1_0_0"
-val trackingUrls = adTracker.getTrackingUrlsForAd(adKey)
+val trackingUrls = videoAnalyticsTracker.getTrackingUrlsForAd(adKey)
+```
+
+#### Send Custom Events
+
+```kotlin
+// Send custom analytics event
+videoAnalyticsTracker.sendCustomEvent("CUSTOM_EVENT_TYPE")
 ```
 
 ### SGAI Stream Requirements
 
-Your HLS stream should include ad markers and use fragmented MP4 ads:
+Your HLS stream **must** include proper ad markers and use **fragmented MP4 ads**:
 
 ```m3u8
+#EXTINF:6.0,
+segment1.ts
 #EXT-X-DATERANGE:ID="ad-break-1",X-ASSET-LIST="https://your-server.com/ads.json"
+#EXTINF:6.0,
+segment2.ts
 ```
 
-**Important**: The SDK is optimized for fragmented MP4 ads due to ExoPlayer's limitations with regular MP4 files in HLS interstitials. Ensure your ad creatives are encoded as fragmented MP4.
+**Alternative format with X-ASSET-URI (VoD SGAI):**
+```m3u8
+#EXT-X-DATERANGE:ID="ad-break-1",X-ASSET-URI="https://your-server.com/ads.json"
+```
 
 The asset list should return JSON with tracking information:
 
@@ -264,52 +430,208 @@ The asset list should return JSON with tracking information:
             {
               "type": "impression",
               "urls": ["https://tracking.example.com/impression"]
+            },
+            {
+              "type": "start", 
+              "urls": ["https://tracking.example.com/start"]
+            },
+            {
+              "type": "firstQuartile",
+              "urls": ["https://tracking.example.com/firstQuartile"]
+            },
+            {
+              "type": "midpoint",
+              "urls": ["https://tracking.example.com/midpoint"]
+            },
+            {
+              "type": "thirdQuartile", 
+              "urls": ["https://tracking.example.com/thirdQuartile"]
+            },
+            {
+              "type": "complete",
+              "urls": ["https://tracking.example.com/complete"]
+            },
+            {
+              "type": "pause",
+              "urls": ["https://tracking.example.com/pause"]
+            },
+            {
+              "type": "resume",
+              "urls": ["https://tracking.example.com/resume"]
             }
           ]
         }
       }
     }
-  ]
+  ],
+  "X-AD-CREATIVE-SIGNALING": {
+    "payload": {
+      "tracking": [
+        {
+          "type": "podStart",
+          "urls": ["https://tracking.example.com/podStart"]
+        },
+        {
+          "type": "podEnd", 
+          "urls": ["https://tracking.example.com/podEnd"]
+        }
+      ]
+    }
+  }
 }
 ```
 
-### SGAI Configuration
+### Configuration Options
 
-#### Custom Ad Session ID
+The `VideoAnalyticsTracker.Builder` supports these configuration options:
 
 ```kotlin
-// Set custom ads session ID (default: "ad-session-1")
-adTracker.setAdsId("custom-session-id")
+VideoAnalyticsTracker.Builder(context, player)
+    .setEventSinkUrl("https://analytics.example.com")     // Analytics endpoint
+    .setContentTitle("My Content")                        // Content title
+    .setIsLive(true)                                     // Live stream flag
+    .setDeviceType("Android TV")                         // Device identifier
+    .setHeartbeatInterval(30_000L)                       // Heartbeat interval in ms
+    .enableSGAIAdTracking(true)                          // Enable/disable SGAI
+    .build()
 ```
 
-#### Network Configuration
+### Network Configuration
 
 The SDK expects your ad server to be accessible. For Android emulator development:
 - Use `10.0.2.2` instead of `localhost`
 - Ensure your ad server is running and accessible
-- **Ad Format Requirements**: Use fragmented MP4 ads only (regular MP4 files are not supported by ExoPlayer in HLS interstitials)
+- **Ad Format Requirements**: Use fragmented MP4 ads only (regular MP4 files will cause `FragmentedMp4Extractor` NullPointerException)
 
-### Error Handling
+### Error Handling & Debugging
 
 The SDK includes built-in error handling and logging. Monitor logs with these tags:
+- `VideoAnalyticsTracker` - Main tracker events
 - `SGAIAdTrackingUrlsExtractor` - Manifest monitoring and URL extraction
-- `TrackingPixel` - Tracking request status
-- `AdsLoader` - Ad loading events
+- `SGAIAdImpressionSender` - Tracking request status
+- `TrackingEvent` - Ad tracking events
+- `PodTracking` - Ad pod events
+- `FragmentedMp4Extractor` - **Watch for NullPointerException (indicates non-fragmented MP4 ads)**
+
+#### Debug Methods
+
+```kotlin
+// Debug current ad tracking state
+private fun debugAdState() {
+    Log.d("DEBUG", "Is playing ad: ${player.isPlayingAd}")
+    Log.d("DEBUG", "Ad group index: ${player.currentAdGroupIndex}")
+    Log.d("DEBUG", "Ad index in group: ${player.currentAdIndexInAdGroup}")
+}
+
+// Debug tracking URLs for specific ad
+private fun debugAdTracking(adKey: String) {
+    val trackingUrls = videoAnalyticsTracker.getTrackingUrlsForAd(adKey)
+    if (trackingUrls != null) {
+        Log.d("DEBUG", "Tracking URLs for ad $adKey: $trackingUrls")
+    } else {
+        Log.d("DEBUG", "No tracking URLs found for ad $adKey")
+    }
+}
+```
+
+## API Reference
+
+### VideoAnalyticsTracker
+
+#### Builder Methods
+- `setEventSinkUrl(url: String)` - Set analytics endpoint
+- `setContentTitle(title: String?)` - Set content title
+- `setIsLive(isLive: Boolean)` - Set live stream flag
+- `setDeviceType(deviceType: String)` - Set device identifier
+- `setHeartbeatInterval(intervalMs: Long)` - Set heartbeat interval
+- `enableSGAIAdTracking(enable: Boolean)` - Enable/disable SGAI tracking
+
+#### Main Methods
+- `setMainMediaItem(streamUrl: String)` - Set media source
+- `setPlayerViewContainer(container: ViewGroup)` - Set ad container (SGAI only)
+- `startTracking()` - Start analytics tracking
+- `stopTracking(reason: String)` - Stop tracking with reason
+- `release()` - Release all resources
+- `sendCustomEvent(eventType: String, payload: JSONObject?)` - Send custom event
+
+#### SGAI Methods
+- `setAdTrackingUrls(adKey: String, trackingMap: Map<String, List<String>>)` - Set tracking URLs
+- `getTrackingUrlsForAd(adKey: String): Map<String, List<String>>?` - Get tracking URLs
+
+## Migration Guide
+
+### From Separate SGAIAdTracker to Unified VideoAnalyticsTracker
+
+**Old approach (separate classes):**
+```kotlin
+val adTracker = SGAIAdTracker(context)
+val analyticsManager = AnalyticsManager(adTracker.player, eventSinkUrl)
+```
+
+**New approach (unified class):**
+```kotlin
+val player = ExoPlayer.Builder(context).build()
+val videoAnalyticsTracker = VideoAnalyticsTracker.Builder(context, player)
+    .setEventSinkUrl(eventSinkUrl)
+    .enableSGAIAdTracking(true)
+    .build()
+```
 
 ## Sample Implementation
 
-See `SGAIPlayerActivity.kt` for a complete implementation example using both analytics and SGAI ad tracking with Jetpack Compose.
+See `SGAIPlayerActivity.kt` and `SimplePlayerActivity.kt` for complete implementation examples using both analytics and SGAI ad tracking with Jetpack Compose.
 
 ## Requirements
 
 - Android API 21+
-- ExoPlayer 1.8.0-alpha01+
+- ExoPlayer 1.8.0-alpha01+ (required for SGAI functionality)
 - Kotlin Coroutines support
+- **Fragmented MP4 ads** (for SGAI functionality)
 
-## For Complete Documentation
+## Troubleshooting
 
-See the [Usage Guide](USAGE.md) for detailed instructions and advanced configuration options.
+### Common Issues
+
+1. **Ads not playing**: Ensure your stream uses fragmented MP4 ads
+2. **NullPointerException in FragmentedMp4Extractor**: This occurs when using non-fragmented MP4 ads. Convert to fragmented MP4 using FFmpeg.
+3. **Tracking URLs not found**: Check manifest format and asset list JSON structure
+4. **Network issues on emulator**: Use `10.0.2.2` instead of `localhost`
+5. **ExoPlayer version**: Ensure you're using 1.8.0-alpha01 or later
+
+### Critical Error: Non-Fragmented MP4 Ads
+
+**Error signature:**
+```
+java.lang.NullPointerException
+at androidx.media3.extractor.mp4.FragmentedMp4Extractor.onMoovContainerAtomRead
+```
+
+**Solution:** Convert your ad creatives to fragmented MP4:
+```bash
+ffmpeg -i regular_ad.mp4 -movflags frag_keyframe+empty_moov fragmented_ad.mp4
+```
+
+### Debug Logs to Monitor
+
+**Success indicators:**
+```
+"Ad started (onStart): ad-session-1_0_0"
+"Ad completed (onAssetListLoadCompleted): ad-session-1_0_0"
+"Sending impression event for ad ad-session-1_0_0 with 1 URLs"
+"****** TrackingDebug: Parsed adTrackingUrlsMap"
+```
+
+**Error indicators:**
+```
+"Failed to extract tracking URLs"
+"No tracking URLs found for event"
+"FragmentedMp4Extractor" exceptions
+```
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+For issues and questions, please visit our [GitHub repository](https://github.com/eyevinn/video-analytics-sdk) or contact support@eyevinn.se.

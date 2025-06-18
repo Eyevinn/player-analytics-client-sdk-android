@@ -7,16 +7,16 @@ import androidx.activity.compose.setContent
 import androidx.annotation.OptIn
 import androidx.compose.material3.MaterialTheme
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import com.analytics.sampleplayer.sgai.AnalyticsManager
-import com.analytics.sdk.SGAIAdTracker
 import com.analytics.sampleplayer.sgai.ui.SGAIVideoPlayerScreen
+import com.analytics.sdk.VideoAnalyticsTracker
 
 @UnstableApi
 class SGAIPlayerActivity : ComponentActivity() {
 
-    private lateinit var adTracker: SGAIAdTracker
-    private lateinit var analyticsManager: AnalyticsManager
+    private lateinit var videoAnalyticsTracker: VideoAnalyticsTracker
+    private lateinit var playerView: PlayerView
 
     private val sgaiStreamUrl = "http://10.0.2.2:3333/x36xhzz/x36xhzz.m3u8"
     private val eventSinkUrl =
@@ -25,43 +25,70 @@ class SGAIPlayerActivity : ComponentActivity() {
     @OptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val player = ExoPlayer.Builder(this).build()
 
-        adTracker = SGAIAdTracker(this)
-        analyticsManager = AnalyticsManager(adTracker.player, eventSinkUrl)
+        // Create VideoAnalyticsTracker with SGAI ad tracking enabled
+        videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, player)
+            .setEventSinkUrl(eventSinkUrl)
+            .setContentTitle("SGAI Stream")
+            .setIsLive(false)
+            .setDeviceType("Android SGAI Player")
+            .setHeartbeatInterval(30_000L)
+            .enableSGAIAdTracking(true)  // Enable SGAI ad tracking
+            .build()
 
-        adTracker.setMainMediaItem(sgaiStreamUrl)
-        val playerView = PlayerView(this).apply {
-            player = adTracker.player
+        // Create PlayerView and set the player
+        playerView = PlayerView(this).apply {
+            this.player = player
         }
+
+        // Set the player view container for ad rendering (required for SGAI)
+        videoAnalyticsTracker.setPlayerViewContainer(playerView)
+        videoAnalyticsTracker.setMainMediaItem(sgaiStreamUrl)
+
         setContent {
             MaterialTheme {
                 SGAIVideoPlayerScreen(playerView)
             }
         }
 
-        Log.i("SGAI_AdTracking", "Stream URL: $sgaiStreamUrl")
+        Log.i("SGAI_Analytics", "Stream URL: $sgaiStreamUrl")
+        Log.i("SGAI_Analytics", "Event Sink URL: $eventSinkUrl")
     }
 
     @OptIn(UnstableApi::class)
     override fun onStart() {
         super.onStart()
-        analyticsManager.startTracking()
-        adTracker.play()
 
+        videoAnalyticsTracker.startTracking()
+
+        // Start playback
+        playerView.player?.let { player ->
+            player.playWhenReady = true
+            player.play()
+        }
+
+        Log.i("SGAI_Analytics", "Started tracking and playback")
     }
 
     @OptIn(UnstableApi::class)
     override fun onStop() {
         super.onStop()
-        analyticsManager.stopTracking("User left the app")
-        adTracker.pause()
 
+        playerView.player?.pause()
+        videoAnalyticsTracker.stopTracking("User left the app")
+
+        Log.i("SGAI_Analytics", "Stopped tracking and playback")
     }
+
     @OptIn(UnstableApi::class)
     override fun onDestroy() {
         super.onDestroy()
-        analyticsManager.release()
-        adTracker.release()
+
+        // Release all resources
+        videoAnalyticsTracker.release()
+        playerView.player?.release()
+
+        Log.i("SGAI_Analytics", "Released all resources")
     }
 }
-
