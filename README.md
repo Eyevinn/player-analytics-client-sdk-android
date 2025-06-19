@@ -658,6 +658,22 @@ Without onPositionDiscontinuity:
 - Pod start/end events are not triggered
 - SGAI ad tracking completely fails
 
+**Implementation Note**
+If you need to customize ad detection logic, modify the logic within **onPositionDiscontinuity** rather than removing the listener entirely. The position discontinuity mechanism is fundamental to how ExoPlayer communicates ad transitions.
+
+**Usage**
+
+val extractor = SGAIAdTrackingUrlsExtractor(streamUrl) { adUri ->
+// Handle ad break found
+Log.d("AdBreak", "Found ad: $adUri")
+}
+
+// For one-time processing (VoD)
+extractor.processManifestAsync()
+
+// For live streams - implement periodic calls
+// Timer/ScheduledExecutor example needed here
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
