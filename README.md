@@ -630,6 +630,7 @@ ffprobe -v quiet -show_entries format=format_name -of default=noprint_wrappers=1
 
 
 **Important Note for Live Streams**
+
 Live Stream Monitoring: The current implementation processes the manifest only once when processManifest() or processManifestAsync() is called.
 For Live Streams, you need to implement periodic monitoring of the manifest to detect new ad breaks as they appear in real-time. Consider:
 
