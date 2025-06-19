@@ -558,7 +558,7 @@ See `SGAIPlayerActivity.kt` and `SimplePlayerActivity.kt` for complete implement
 4. **Network issues on emulator**: Use `10.0.2.2` instead of `localhost`
 5. **ExoPlayer version**: Ensure you're using 1.8.0-alpha01 or later
 
-### Critical Error: Non-Fragmented MP4 Ads
+### Error: Non-Fragmented MP4 Ads
 
 **Error signature:**
 ```
@@ -658,22 +658,6 @@ Without onPositionDiscontinuity:
 - No ad impression, start, or complete events are sent
 - Pod start/end events are not triggered
 - SGAI ad tracking completely fails
-
-**Implementation Note**
-If you need to customize ad detection logic, modify the logic within **onPositionDiscontinuity** rather than removing the listener entirely. The position discontinuity mechanism is fundamental to how ExoPlayer communicates ad transitions.
-
-**Usage**
-
-val extractor = SGAIAdTrackingUrlsExtractor(streamUrl) { adUri ->
-// Handle ad break found
-Log.d("AdBreak", "Found ad: $adUri")
-}
-
-// For one-time processing (VoD)
-extractor.processManifestAsync()
-
-// For live streams - implement periodic calls
-// Timer/ScheduledExecutor example needed here
 
 ## License
 
