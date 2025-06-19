@@ -1,6 +1,7 @@
 package com.analytics.sdk
 
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
@@ -20,10 +21,12 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.hls.HlsInterstitialsAdsLoader
 import androidx.core.net.toUri
+import androidx.media3.common.AdPlaybackState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.IOException
 
 /**
  * Unified tracker that monitors an ExoPlayer instance for both video analytics
@@ -60,8 +63,7 @@ class VideoAnalyticsTracker private constructor(
     private val adProgressHandler = Handler(Looper.getMainLooper())
 
     // SGAI ad components
-    private val dataSourceFactory = DefaultDataSource.Factory(context)
-    private val adsLoader: HlsInterstitialsAdsLoader = HlsInterstitialsAdsLoader(dataSourceFactory)
+    private val adsLoader: HlsInterstitialsAdsLoader = HlsInterstitialsAdsLoader(context)
 
     // Runnables
     private val heartbeatRunnable = object : Runnable {
@@ -124,9 +126,6 @@ class VideoAnalyticsTracker private constructor(
 
     private fun setupPlayerListeners() {
         player.addListener(object : Player.Listener {
-            private var lastAdIndex = -1
-            private var lastAdGroupIndex = -1
-
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
@@ -190,49 +189,7 @@ class VideoAnalyticsTracker private constructor(
                 newPosition: Player.PositionInfo,
                 reason: Int
             ) {
-                if (config.enableSGAITracking && player.isPlayingAd) {
-                    // Handle SGAI ad transitions (this is the KEY logic from original)
-                    val adGroupIndex = player.currentAdGroupIndex
-                    val adIndexInAdGroup = player.currentAdIndexInAdGroup
-
-                    if (adGroupIndex != lastAdGroupIndex || adIndexInAdGroup != lastAdIndex) {
-                        lastAdGroupIndex = adGroupIndex
-                        lastAdIndex = adIndexInAdGroup
-                        lastAdQuartile = 0
-                        currentAdKey = "ad-session-1_${adGroupIndex}_${adIndexInAdGroup}"
-                        isCurrentlyPaused = false
-
-                        // Handle pod start event for new ad group
-                        if (adIndexInAdGroup == 0) { // First ad in the pod
-                            val podKey = "pod_ad-session-1_${adGroupIndex}"
-                            activePods.add(podKey)
-                            sendPodTrackingEvent(podKey, SGAIAdTrackingEvent.POD_START)
-                        }
-
-                        // Send ad start events
-                        sendTrackingEvent(currentAdKey!!, SGAIAdTrackingEvent.IMPRESSION)
-                        sendTrackingEvent(currentAdKey!!, SGAIAdTrackingEvent.START)
-                        startAdProgressTracking()
-
-                        Log.d(TAG, "Ad started via onPositionDiscontinuity: $currentAdKey")
-                    }
-                } else if (config.enableSGAITracking && lastAdGroupIndex != -1 || lastAdIndex != -1) {
-                    // Exiting ad playback
-                    if (currentAdKey != null) {
-                        sendTrackingEvent(currentAdKey!!, SGAIAdTrackingEvent.COMPLETE)
-                        checkAndCompletePod(lastAdGroupIndex)
-                    }
-                    lastAdGroupIndex = -1
-                    lastAdIndex = -1
-                    currentAdKey = null
-                    isCurrentlyPaused = false
-                    stopAdProgressTracking()
-                    Log.d(TAG, "Ad completed via onPositionDiscontinuity")
-                } else if (!config.enableSGAITracking && reason == Player.DISCONTINUITY_REASON_SEEK) {
-                    // Handle regular video seeking
-                    eventSender.sendSeekingEvent(player.currentPosition, player.duration)
-                    seekingEventOngoing = true
-                }
+                // TODO: Handle position discontinuity only if needed (NOT FOR SGAI ADS)
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -306,17 +263,43 @@ class VideoAnalyticsTracker private constructor(
     }
 
     private fun setupSGAIAdTracking() {
-        val adViewProvider = object : AdViewProvider {
-            override fun getAdViewGroup(): ViewGroup? = playerViewContainer
-            override fun getAdOverlayInfos(): List<AdOverlayInfo> {
-                return playerViewContainer?.let {
-                    listOf(AdOverlayInfo(it, AdOverlayInfo.PURPOSE_CONTROLS))
-                } ?: emptyList()
-            }
-        }
-
-        adsLoader.setPlayer(player)
         adsLoader.addListener(object : HlsInterstitialsAdsLoader.Listener {
+
+            override fun onStart(mediaItem: MediaItem, adsId: Any, adViewProvider: AdViewProvider) {
+                // Do something when HLS media item with interstitials is started.
+                Log.d(TAG, "Ad $adsId started - sending START event")
+                // TODO send START event
+                // TODO start tracking
+            }
+
+            override fun onStop(mediaItem: MediaItem, adsId: Any, adPlaybackState: AdPlaybackState) {
+                // Do something with the resulting ad playback state when stopped.
+                Log.d(TAG, "Ad $adsId stopped - sending STOP event")
+                // TODO send COMPLETE event
+            }
+
+            override fun onAssetListLoadStarted(
+                mediaItem: MediaItem,
+                adsId: Any,
+                adGroupIndex: Int,
+                adIndexInAdGroup: Int
+            ) {
+                Log.d(TAG, "Loading ad asset list for $adsId at group $adGroupIndex, index $adIndexInAdGroup")
+            }
+
+            override fun onAssetListLoadFailed(
+                mediaItem: MediaItem,
+                adsId: Any,
+                adGroupIndex: Int,
+                adIndexInAdGroup: Int,
+                ioException: IOException?,
+                cancelled: Boolean
+            ) {
+                val adKey = "${adsId}_${adGroupIndex}_${adIndexInAdGroup}"
+                Log.e(TAG, "Failed to load ad asset list for $adKey", ioException)
+                // TODO send event on failure (e.g., unable to access localhost from emulator)
+            }
+
             override fun onAssetListLoadCompleted(
                 mediaItem: MediaItem,
                 adsId: Any,
@@ -325,12 +308,13 @@ class VideoAnalyticsTracker private constructor(
                 assetList: HlsInterstitialsAdsLoader.AssetList
             ) {
                 val adKey = "${adsId}_${adGroupIndex}_${adIndexInAdGroup}"
-                Log.d(TAG, "Ad asset list loaded for ad $adKey - sending COMPLETE event")
-                // This is where the original code sent the COMPLETE event
-                sendTrackingEvent(adKey, SGAIAdTrackingEvent.COMPLETE)
-                checkAndCompletePod(adGroupIndex)
+                Log.d(TAG, "Ad asset list loaded for ad $adKey - ${assetList.stringAttributes}")
+                // TODO parse the asset list and extract tracking URLs
+                // NOTICE: You might need to fetch it manually if not done automatically
             }
         })
+
+        adsLoader.setPlayer(player)
     }
 
     private fun initializeTracking() {
@@ -356,72 +340,38 @@ class VideoAnalyticsTracker private constructor(
      */
     fun setMainMediaItem(streamUrl: String) {
         if (config.enableSGAITracking) {
-            setupSGAIExtractor(streamUrl)
-
-            val mediaItem = MediaItem.Builder()
-                .setUri(streamUrl.toUri())
-                .apply {
-                    setAdsConfiguration(
-                        AdsConfiguration.Builder("placeholder".toUri())
-                            .setAdsId("ad-session-1")
-                            .build()
-                    )
+            val adViewProvider = object : AdViewProvider {
+                override fun getAdViewGroup(): ViewGroup? = playerViewContainer
+                override fun getAdOverlayInfos(): List<AdOverlayInfo> {
+                    return playerViewContainer?.let {
+                        listOf(AdOverlayInfo(it, AdOverlayInfo.PURPOSE_CONTROLS))
+                    } ?: emptyList()
                 }
-                .build()
+            }
 
-            val adsMediaSourceFactory = HlsInterstitialsAdsLoader.AdsMediaSourceFactory(
-                adsLoader,
-                object : AdViewProvider {
-                    override fun getAdViewGroup(): ViewGroup? = playerViewContainer
-                    override fun getAdOverlayInfos(): List<AdOverlayInfo> {
-                        return playerViewContainer?.let {
-                            listOf(AdOverlayInfo(it, AdOverlayInfo.PURPOSE_CONTROLS))
-                        } ?: emptyList()
-                    }
-                },
-                context
-            )
-            val adsMediaSource = adsMediaSourceFactory.createMediaSource(mediaItem)
-            player.setMediaSource(adsMediaSource)
+            val hlsMediaSourceFactory =
+                HlsInterstitialsAdsLoader.AdsMediaSourceFactory(adsLoader, adViewProvider, context)
+
+            // Create an media source from an HLS media item with ads configuration.
+            val mediaSource =
+                hlsMediaSourceFactory.createMediaSource(
+                    MediaItem.Builder()
+                        .setUri(streamUrl.toUri())
+                        .setAdsConfiguration(
+                            AdsConfiguration.Builder("hls://interstitials".toUri())
+                                .setAdsId("ad-tag-0")
+                                .build()
+                        )
+                        .build()
+                )
+
+            player.setMediaSource(mediaSource)
         } else {
             val mediaItem = MediaItem.fromUri(streamUrl)
             player.setMediaItem(mediaItem)
         }
 
         player.prepare()
-    }
-
-    private fun setupSGAIExtractor(streamUrl: String) {
-        SGAIAdTrackingUrlsExtractor(streamUrl) { adUri ->
-            Log.d(TAG, "Ad break found with URI: $adUri")
-        }.also {
-            adExtractor = it
-            it.setAdsId("ad-session-1")
-            it.addPodTrackingCallback { eventType, podId ->
-                when (eventType) {
-                    SGAIAdTrackingEvent.POD_START.eventName -> {
-                        Log.d(TAG, "Pod started: $podId")
-                        activePods.add(podId)
-                        // Copy pod tracking URLs to main map
-                        it.getTrackingUrlsForAd(podId)?.let { podUrls ->
-                            adTrackingUrlsMap[podId] = podUrls
-                            Log.d(TAG, "Copied pod tracking URLs for $podId: ${podUrls.keys}")
-                        }
-                    }
-                    SGAIAdTrackingEvent.POD_END.eventName -> {
-                        Log.d(TAG, "Pod ended: $podId")
-                        activePods.remove(podId)
-                    }
-                }
-            }
-
-            CoroutineScope(Dispatchers.Main).launch {
-                it.processManifest()
-            }
-
-            // Periodically sync tracking URLs from extractor to main tracker
-            syncTrackingUrls()
-        }
     }
     
     private fun handleAdPause() {
