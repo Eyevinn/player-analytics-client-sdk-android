@@ -14,13 +14,13 @@ import java.net.URLDecoder
 import java.util.UUID
 import kotlinx.coroutines.NonCancellable.isActive
 
+private const val STREAM_BASE_URL = "http://10.0.2.2:3333/"
+
 class SGAIAdTrackingUrlsExtractor(
     private val streamUrl: String,
     private val onAdBreakFound: ((adUri: String) -> Unit)? = null
 ) {
     private val TAG = "SGAIAdTrackingUrlsExtractor"
-    private val manifestRefreshInterval = 15_000L
-    private var monitoringJob: Job? = null
 
     private val adTrackingUrlsMap: MutableMap<String, Map<String, List<String>>> = mutableMapOf()
     private var currentAdsId: String = "ad-session-1"
@@ -47,40 +47,27 @@ class SGAIAdTrackingUrlsExtractor(
         podTrackingCallbacks.add(callback)
     }
 
-    fun startMonitoring() {
-        monitoringJob = CoroutineScope(Dispatchers.Main).launch {
-            monitorLiveStream(streamUrl)
+    suspend fun processManifest() {
+        Log.d(TAG, "Processing manifest for: $streamUrl")
+
+        val manifestContent = withContext(Dispatchers.IO) {
+            fetchManifestContent(streamUrl)
         }
-        Log.d(TAG, "Started manifest monitoring for: $streamUrl")
-    }
 
-    fun stopMonitoring() {
-        monitoringJob?.cancel()
-        Log.d(TAG, "Stopped manifest monitoring")
-    }
-
-    private suspend fun monitorLiveStream(streamUrl: String) {
-        while (isActive) {
-            val manifestContent = withContext(Dispatchers.IO) {
-                fetchManifestContent(streamUrl)
-            }
-
-            if (!manifestContent.isNullOrEmpty()) {
-                if (manifestContent.contains("#EXT-X-DATERANGE") || manifestContent.contains("#EXT-X-STREAM-INF")) {
-                    val variantUrl = extractVariantUrl(manifestContent, streamUrl)
-                    if (variantUrl != null) {
-                        val mediaPlaylistContent = withContext(Dispatchers.IO) {
-                            fetchManifestContent(variantUrl)
-                        }
-                        if (!mediaPlaylistContent.isNullOrEmpty()) {
-                            parseAdCues(mediaPlaylistContent)
-                        }
+        if (!manifestContent.isNullOrEmpty()) {
+            if (manifestContent.contains("#EXT-X-DATERANGE") || manifestContent.contains("#EXT-X-STREAM-INF")) {
+                val variantUrl = extractVariantUrl(manifestContent, streamUrl)
+                if (variantUrl != null) {
+                    val mediaPlaylistContent = withContext(Dispatchers.IO) {
+                        fetchManifestContent(variantUrl)
                     }
-                } else {
-                    parseAdCues(manifestContent)
+                    if (!mediaPlaylistContent.isNullOrEmpty()) {
+                        parseAdCues(mediaPlaylistContent)
+                    }
                 }
+            } else {
+                parseAdCues(manifestContent)
             }
-            delay(manifestRefreshInterval)
         }
     }
 
@@ -194,7 +181,7 @@ class SGAIAdTrackingUrlsExtractor(
      */
     private suspend fun fetchAdAssets(url: String): AdResponse {
         val retrofit = Retrofit.Builder()
-            .baseUrl("http://10.0.2.2:3333/")
+            .baseUrl(STREAM_BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
@@ -252,16 +239,6 @@ class SGAIAdTrackingUrlsExtractor(
         return adTrackingUrlsMap.toMap()
     }
 
-    fun getImpressionUrlsForAd(adId: String): List<String> {
-        return adTrackingUrlsMap[adId]?.get("impression") ?: emptyList()
-    }
-
-    fun sendImpressionTracking(adId: String) {
-        adTrackingUrlsMap[adId]?.get("impression")?.forEach { url ->
-            sendTrackingPixel(url, "impression")
-        }
-    }
-
     fun sendPodEndTracking(podId: String) {
         adTrackingUrlsMap[podId]?.get(SGAIAdTrackingEvent.POD_END.eventName)?.forEach { url ->
             sendTrackingPixel(url, SGAIAdTrackingEvent.POD_END.eventName)
@@ -289,7 +266,6 @@ class SGAIAdTrackingUrlsExtractor(
     }
 
     fun release() {
-        stopMonitoring()
         podTrackingCallbacks.clear()
         Log.d(TAG, "AdExtractor released")
     }

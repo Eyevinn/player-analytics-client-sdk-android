@@ -71,46 +71,6 @@ Add the following permissions to your `AndroidManifest.xml`:
 ```
 
 ---
-
-## ⚠️ Current Limitations & Requirements
-
-### **ExoPlayer Version Compatibility**
-
-**This SDK is designed for ExoPlayer version 1.8.0-alpha01 and later versions.**
-
-Due to current limitations in Android ExoPlayer's HLS interstitials implementation, SGAI ad tracking has specific requirements that will be improved in future ExoPlayer releases.
-
-### 🚨 **Important: Fragmented MP4 Requirement for SGAI Ads**
-
-**The SDK is optimized for fragmented MP4 ads due to ExoPlayer's current limitations with regular MP4 files in HLS interstitials.**
-
-- ✅ **Use**: Fragmented MP4 (`.mp4` with fragmentation)
-- ❌ **Avoid**: Regular MP4, WebM, or other formats
-- **Why**: ExoPlayer 1.8.0-alpha01 has known issues with non-fragmented MP4 in HLS interstitials
-
-**⚠️ What happens with non-fragmented ads:**
-If you use regular (non-fragmented) MP4 ads, you will encounter this error:
-```
-java.lang.NullPointerException
-at androidx.media3.common.util.Assertions.checkNotNull(Assertions.java:155)
-at androidx.media3.extractor.mp4.FragmentedMp4Extractor.onMoovContainerAtomRead(FragmentedMp4Extractor.java:685)
-```
-
-**Ensure your ad creatives are encoded as fragmented MP4:**
-```bash
-# Example FFmpeg command for fragmented MP4
-ffmpeg -i input.mp4 -movflags frag_keyframe+empty_moov -f mp4 output_fragmented.mp4
-```
-
-**Verification command:**
-```bash
-# Check if MP4 is fragmented
-ffprobe -v quiet -show_entries format=format_name -of default=noprint_wrappers=1:nokey=1 your_ad.mp4
-# Should show: mov,mp4,m4a,3gp,3g2,mj2 (fragmented)
-```
-
----
-
 ## Section 1: Video Analytics Tracking (No Ads)
 
 Track comprehensive video playback analytics including user engagement, performance metrics, and viewing behavior.
@@ -627,6 +587,57 @@ ffmpeg -i regular_ad.mp4 -movflags frag_keyframe+empty_moov fragmented_ad.mp4
 "No tracking URLs found for event"
 "FragmentedMp4Extractor" exceptions
 ```
+
+
+## ⚠️ Current Limitations & Requirements
+
+### **ExoPlayer Version Compatibility**
+
+**This SDK is designed for ExoPlayer version 1.8.0-alpha01 and later versions.**
+
+Due to current limitations in Android ExoPlayer's HLS interstitials implementation, SGAI ad tracking has specific requirements that will be improved in future ExoPlayer releases.
+
+### 🚨 **Important: Fragmented MP4 Requirement for SGAI Ads**
+
+**The SDK is optimized for fragmented MP4 ads due to ExoPlayer's current limitations with regular MP4 files in HLS interstitials.**
+
+- ✅ **Use**: Fragmented MP4 (`.mp4` with fragmentation)
+- ❌ **Avoid**: Regular MP4, WebM, or other formats
+- **Why**: ExoPlayer 1.8.0-alpha01 has known issues with non-fragmented MP4 in HLS interstitials
+
+**⚠️ What happens with non-fragmented ads:**
+If you use regular (non-fragmented) MP4 ads, you will encounter this error:
+```
+java.lang.NullPointerException
+at androidx.media3.common.util.Assertions.checkNotNull(Assertions.java:155)
+at androidx.media3.extractor.mp4.FragmentedMp4Extractor.onMoovContainerAtomRead(FragmentedMp4Extractor.java:685)
+```
+
+**Ensure your ad creatives are encoded as fragmented MP4:**
+```bash
+# Example FFmpeg command for fragmented MP4
+ffmpeg -i input.mp4 -movflags frag_keyframe+empty_moov -f mp4 output_fragmented.mp4
+```
+
+**Verification command:**
+```bash
+# Check if MP4 is fragmented
+ffprobe -v quiet -show_entries format=format_name -of default=noprint_wrappers=1:nokey=1 your_ad.mp4
+# Should show: mov,mp4,m4a,3gp,3g2,mj2 (fragmented)
+```
+
+---
+
+
+**Important Note for Live Streams**
+Live Stream Monitoring: The current implementation processes the manifest only once when processManifest() or processManifestAsync() is called.
+For Live Streams, you need to implement periodic monitoring of the manifest to detect new ad breaks as they appear in real-time. Consider:
+
+Setting up a timer or scheduled task to call processManifest() periodically (e.g., every 15-30 seconds)
+Monitoring manifest updates based on your streaming protocol requirements
+Implementing manifest change detection to avoid unnecessary processing
+
+For VoD (Video on Demand), the single manifest processing is sufficient as ad breaks are pre-defined.
 
 ## License
 

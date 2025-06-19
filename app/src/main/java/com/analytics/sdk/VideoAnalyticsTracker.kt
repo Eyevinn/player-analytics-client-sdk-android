@@ -20,6 +20,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.hls.HlsInterstitialsAdsLoader
 import androidx.core.net.toUri
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /**
@@ -411,7 +414,10 @@ class VideoAnalyticsTracker private constructor(
                     }
                 }
             }
-            it.startMonitoring()
+
+            CoroutineScope(Dispatchers.Main).launch {
+                it.processManifest()
+            }
 
             // Periodically sync tracking URLs from extractor to main tracker
             syncTrackingUrls()
