@@ -589,7 +589,7 @@ ffmpeg -i regular_ad.mp4 -movflags frag_keyframe+empty_moov fragmented_ad.mp4
 ```
 
 
-## ⚠️ Current Limitations & Requirements
+##  Current Limitations & Requirements
 
 ### **ExoPlayer Version Compatibility**
 
@@ -597,15 +597,15 @@ ffmpeg -i regular_ad.mp4 -movflags frag_keyframe+empty_moov fragmented_ad.mp4
 
 Due to current limitations in Android ExoPlayer's HLS interstitials implementation, SGAI ad tracking has specific requirements that will be improved in future ExoPlayer releases.
 
-### 🚨 **Important: Fragmented MP4 Requirement for SGAI Ads**
+###  **Important: Fragmented MP4 Requirement for SGAI Ads**
 
 **The SDK is optimized for fragmented MP4 ads due to ExoPlayer's current limitations with regular MP4 files in HLS interstitials.**
 
-- ✅ **Use**: Fragmented MP4 (`.mp4` with fragmentation)
-- ❌ **Avoid**: Regular MP4, WebM, or other formats
+-  **Use**: Fragmented MP4 (`.mp4` with fragmentation)
+-  **Avoid**: Regular MP4, WebM, or other formats
 - **Why**: ExoPlayer 1.8.0-alpha01 has known issues with non-fragmented MP4 in HLS interstitials
 
-**⚠️ What happens with non-fragmented ads:**
+** What happens with non-fragmented ads:**
 If you use regular (non-fragmented) MP4 ads, you will encounter this error:
 ```
 java.lang.NullPointerException
