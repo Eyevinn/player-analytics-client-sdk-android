@@ -639,6 +639,25 @@ Implementing manifest change detection to avoid unnecessary processing
 
 For VoD (Video on Demand), the single manifest processing is sufficient as ad breaks are pre-defined.
 
+**Important: onPositionDiscontinuity in ExoPlayer**
+
+️ExoPlayer Integration Requirement: When integrating SGAI ad tracking with ExoPlayer, the onPositionDiscontinuity listener is ESSENTIAL and cannot be removed.
+Why onPositionDiscontinuity is important:
+
+Ad Transition Detection: ExoPlayer uses position discontinuities to signal transitions between content and ads. This is the primary mechanism to detect when an ad starts or ends.
+Tracking URL Synchronization: The tracking URLs extracted from the manifest are only synchronized to the main tracker when ad events are triggered, which happens through onPositionDiscontinuity.
+Event Chain Trigger:
+onPositionDiscontinuity → sendTrackingEvent() → syncTrackingUrls() → URLs available for tracking
+
+Ad State Management: It manages ad keys, pod tracking, and quartile progression that are essential for proper SGAI ad analytics.
+
+Without onPositionDiscontinuity:
+
+- Tracking URLs remain in the extractor but are never synchronized to the main tracker
+- No ad impression, start, or complete events are sent
+- Pod start/end events are not triggered
+- SGAI ad tracking completely fails
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
