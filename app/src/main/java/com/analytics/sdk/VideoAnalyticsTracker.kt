@@ -1,30 +1,29 @@
 package com.analytics.sdk
 
 import android.content.Context
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
 import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.media3.common.AdOverlayInfo
+import androidx.media3.common.AdPlaybackState
 import androidx.media3.common.AdViewProvider
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaItem.AdsConfiguration
-import androidx.media3.common.Player
+import androidx.media3.common.Metadata
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.hls.HlsInterstitialsAdsLoader
-import androidx.core.net.toUri
-import androidx.media3.common.AdPlaybackState
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import androidx.media3.exoplayer.hls.HlsManifest
+import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
 import org.json.JSONObject
 import java.io.IOException
 
@@ -44,19 +43,14 @@ class VideoAnalyticsTracker private constructor(
     // Video analytics state
     private var loadedEventSent = false
     private var bufferingEventOngoing = false
-    private var seekingEventOngoing = false
 
     // SGAI ad tracking state
     private var playerViewContainer: ViewGroup? = null
     private var adExtractor: SGAIAdTrackingUrlsExtractor? = null
     private val adTrackingUrlsMap: MutableMap<String, Map<String, List<String>>> = mutableMapOf()
     private val sentTrackingEvents: MutableMap<String, MutableSet<String>> = mutableMapOf()
-    private var wasPlayingBeforePause = false
-    private var isCurrentlyPaused = false
     private val activePods: MutableSet<String> = mutableSetOf()
     private val impressionSender = SGAIAdImpressionSender()
-    private var currentAdKey: String? = null
-    private var lastAdQuartile = 0
 
     // Handlers
     private val heartbeatHandler = Handler(Looper.getMainLooper())
@@ -75,7 +69,6 @@ class VideoAnalyticsTracker private constructor(
 
     private val adProgressRunnable = object : Runnable {
         override fun run() {
-            trackAdQuartiles()
             adProgressHandler.postDelayed(this, 250)
         }
     }
@@ -127,6 +120,7 @@ class VideoAnalyticsTracker private constructor(
     private fun setupPlayerListeners() {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
+                Log.d(TAG, "Playback state changed: $playbackState")
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
                         if (!config.enableSGAITracking || !player.isPlayingAd) {
@@ -165,23 +159,7 @@ class VideoAnalyticsTracker private constructor(
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (config.enableSGAITracking && player.isPlayingAd) {
-                    // Handle SGAI ad pause/resume
-                    if (!isPlaying && wasPlayingBeforePause) {
-                        handleAdPause()
-                    } else if (isPlaying && isCurrentlyPaused) {
-                        handleAdResume()
-                    }
-                    wasPlayingBeforePause = isPlaying
-                } else if (!config.enableSGAITracking || !player.isPlayingAd) {
-                    // Handle regular video playback
-                    if (isPlaying) {
-                        eventSender.sendPlayingEvent(player.currentPosition, player.duration)
-                    } else if (player.playbackState != Player.STATE_BUFFERING &&
-                        player.playbackState != Player.STATE_ENDED) {
-                        eventSender.sendPausedEvent(player.currentPosition, player.duration)
-                    }
-                }
+                Log.d(TAG, "Playing changed: $isPlaying")
             }
 
             override fun onPositionDiscontinuity(
@@ -189,7 +167,48 @@ class VideoAnalyticsTracker private constructor(
                 newPosition: Player.PositionInfo,
                 reason: Int
             ) {
-                // TODO: Handle position discontinuity only if needed (NOT FOR SGAI ADS)
+                Log.d(TAG, "Position discontinuity: $oldPosition, $newPosition, reason: $reason")
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                    return
+                }
+
+                // NOTICE: This is called in both Live and VoD streams when ad playback starts/stops
+                Log.d(TAG, "is during ad break: ${player.isPlayingAd}")
+                if (player.isPlayingAd) {
+                    // When ad content starts playing
+                    // TODO: start tracking ad progress
+                    // TODO: send ad START tracking event
+                    val adGroupIndex = player.currentAdGroupIndex
+                    val adIndexInAdGroup = player.currentAdIndexInAdGroup
+
+                    Log.d(TAG, "AD STARTED - Group: $adGroupIndex, Index: $adIndexInAdGroup")
+                } else {
+                    // Main content is resumed
+                }
+            }
+
+            override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                val manifest = player.currentManifest
+                if (manifest is HlsManifest) {
+                    // Do something with the manifest.
+                    val isLive = manifest.mediaPlaylist.playlistType == HlsMediaPlaylist.PLAYLIST_TYPE_EVENT
+                    val isVod = manifest.mediaPlaylist.playlistType == HlsMediaPlaylist.PLAYLIST_TYPE_VOD
+                    Log.d(TAG, "HLS Manifest is Live? $isLive or VoD $isVod")
+
+                    // TODO Mark this stream as Live or VoD
+                    // config.isLive = isLive
+
+                    for (ad in manifest.mediaPlaylist.interstitials) {
+                        // TODO print URLs if needed
+                        // Log.d(TAG, "Found interstitial ad: ${ad.id}")
+                        // You can extract ad tracking URLs here if needed
+                        // Log.d(TAG, "Ad tracking URLs: ${ad.assetUri} or ${ad.assetListUri}")
+
+                        // TODO fetch ad tracking URLs and extract the json response, save them based on IDs
+                        // NOTICE: This is called in both Live and VoD streams when the timeline changes
+                        // DO NOT request for the same interstitial multiple times
+                    }
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -223,42 +242,6 @@ class VideoAnalyticsTracker private constructor(
                     )
                 }
             }
-
-            override fun onPlayerStateChanged(
-                eventTime: AnalyticsListener.EventTime,
-                playWhenReady: Boolean,
-                playbackState: Int
-            ) {
-                if (config.enableSGAITracking) {
-                    when (playbackState) {
-                        Player.STATE_READY -> {
-                            if (player.isPlayingAd) {
-                                val adGroupIndex = player.currentAdGroupIndex
-                                val adIndexInAdGroup = player.currentAdIndexInAdGroup
-                                val adKey = "ad-session-1_${adGroupIndex}_${adIndexInAdGroup}"
-
-                                // Only send if this is a new ad
-                                if (currentAdKey != adKey) {
-                                    currentAdKey = adKey
-                                    sendTrackingEvent(adKey, SGAIAdTrackingEvent.IMPRESSION)
-                                    sendTrackingEvent(adKey, SGAIAdTrackingEvent.START)
-                                    Log.d(TAG, "Ad started via AnalyticsListener: $adKey")
-                                }
-                            }
-                        }
-                    }
-
-                    // Handle ad pause/resume via AnalyticsListener
-                    if (player.isPlayingAd) {
-                        if (!playWhenReady && wasPlayingBeforePause) {
-                            handleAdPause()
-                        } else if (playWhenReady && isCurrentlyPaused) {
-                            handleAdResume()
-                        }
-                    }
-                    wasPlayingBeforePause = playWhenReady
-                }
-            }
         })
     }
 
@@ -266,16 +249,54 @@ class VideoAnalyticsTracker private constructor(
         adsLoader.addListener(object : HlsInterstitialsAdsLoader.Listener {
 
             override fun onStart(mediaItem: MediaItem, adsId: Any, adViewProvider: AdViewProvider) {
-                // Do something when HLS media item with interstitials is started.
-                Log.d(TAG, "Ad $adsId started - sending START event")
-                // TODO send START event
-                // TODO start tracking
+                // Do something when HLS media item with interstitials starts playing. It happens once per playback session.
+                Log.d(TAG, "Ad loader started - $adsId")
             }
 
             override fun onStop(mediaItem: MediaItem, adsId: Any, adPlaybackState: AdPlaybackState) {
-                // Do something with the resulting ad playback state when stopped.
-                Log.d(TAG, "Ad $adsId stopped - sending STOP event")
-                // TODO send COMPLETE event
+                // Do something when we stop playing HLS media item with interstitials (e.g., entering background).
+                Log.d(TAG, "Ad loader stopped - $adsId")
+            }
+
+            override fun onContentTimelineChanged(
+                mediaItem: MediaItem,
+                adsId: Any,
+                hlsContentTimeline: Timeline
+            ) {
+                Log.d(TAG, "Content timeline changed for $adsId: $hlsContentTimeline")
+            }
+
+            override fun onAdCompleted(
+                mediaItem: MediaItem,
+                adsId: Any,
+                adGroupIndex: Int,
+                adIndexInAdGroup: Int
+            ) {
+                Log.d(TAG, "AD COMPLETED for $adsId at group $adGroupIndex, index $adIndexInAdGroup")
+                // TODO send ad COMPLETE event
+                // NOTICE: This is called in both VoD and Live Playback
+
+                // TODO check if there is more ads in the group
+                // TODO send pod COMPLETE event if this is the last ad in the group
+            }
+
+            override fun onPrepareCompleted(
+                mediaItem: MediaItem,
+                adsId: Any,
+                adGroupIndex: Int,
+                adIndexInAdGroup: Int
+            ) {
+                Log.d(TAG, "Ad prepared for $adsId at group $adGroupIndex, index $adIndexInAdGroup")
+            }
+
+            override fun onMetadata(
+                mediaItem: MediaItem,
+                adsId: Any,
+                adGroupIndex: Int,
+                adIndexInAdGroup: Int,
+                metadata: Metadata
+            ) {
+                Log.d(TAG, "Ad metadata received for $adsId at group $adGroupIndex, index $adIndexInAdGroup: $metadata")
             }
 
             override fun onAssetListLoadStarted(
@@ -309,8 +330,7 @@ class VideoAnalyticsTracker private constructor(
             ) {
                 val adKey = "${adsId}_${adGroupIndex}_${adIndexInAdGroup}"
                 Log.d(TAG, "Ad asset list loaded for ad $adKey - ${assetList.stringAttributes}")
-                // TODO parse the asset list and extract tracking URLs
-                // NOTICE: You might need to fetch it manually if not done automatically
+                // TODO fetch the asset list and extract tracking URLs
             }
         })
 
@@ -359,7 +379,7 @@ class VideoAnalyticsTracker private constructor(
                         .setUri(streamUrl.toUri())
                         .setAdsConfiguration(
                             AdsConfiguration.Builder("hls://interstitials".toUri())
-                                .setAdsId("ad-tag-0")
+                                .setAdsId("playback-session-0")
                                 .build()
                         )
                         .build()
@@ -372,26 +392,6 @@ class VideoAnalyticsTracker private constructor(
         }
 
         player.prepare()
-    }
-    
-    private fun handleAdPause() {
-        currentAdKey?.let { adKey ->
-            if (!isCurrentlyPaused) {
-                isCurrentlyPaused = true
-                sendTrackingEvent(adKey, SGAIAdTrackingEvent.PAUSE)
-                Log.d(TAG, "Ad paused: $adKey")
-            }
-        }
-    }
-
-    private fun handleAdResume() {
-        currentAdKey?.let { adKey ->
-            if (isCurrentlyPaused) {
-                isCurrentlyPaused = false
-                sendTrackingEvent(adKey, SGAIAdTrackingEvent.RESUME)
-                Log.d(TAG, "Ad resumed: $adKey")
-            }
-        }
     }
 
     private fun sendTrackingEvent(adKey: String, eventType: SGAIAdTrackingEvent) {
@@ -468,50 +468,6 @@ class VideoAnalyticsTracker private constructor(
         adProgressHandler.post(adProgressRunnable)
     }
 
-    private fun stopAdProgressTracking() {
-        adProgressHandler.removeCallbacks(adProgressRunnable)
-        lastAdQuartile = 0
-    }
-
-    private fun trackAdQuartiles() {
-        if (!player.isPlayingAd || currentAdKey == null) {
-            return
-        }
-
-        val duration = player.duration
-        val position = player.currentPosition
-
-        if (duration > 0 && position >= 0) {
-            val progress = position.toFloat() / duration.toFloat()
-            Log.d(TAG, "Ad progress: ${(progress * 100).toInt()}% ($position/$duration)")
-
-            val quartile = when {
-                progress >= 0.75f -> 3
-                progress >= 0.5f -> 2
-                progress >= 0.25f -> 1
-                else -> 0
-            }
-
-            if (quartile > lastAdQuartile) {
-                when (quartile) {
-                    1 -> {
-                        sendTrackingEvent(currentAdKey!!, SGAIAdTrackingEvent.FIRST_QUARTILE)
-                        Log.d(TAG, "First quartile reached for $currentAdKey")
-                    }
-                    2 -> {
-                        sendTrackingEvent(currentAdKey!!, SGAIAdTrackingEvent.MIDPOINT)
-                        Log.d(TAG, "Midpoint reached for $currentAdKey")
-                    }
-                    3 -> {
-                        sendTrackingEvent(currentAdKey!!, SGAIAdTrackingEvent.THIRD_QUARTILE)
-                        Log.d(TAG, "Third quartile reached for $currentAdKey")
-                    }
-                }
-                lastAdQuartile = quartile
-            }
-        }
-    }
-
     /**
      * Sync tracking URLs from extractor to main tracking map
      */
@@ -537,7 +493,6 @@ class VideoAnalyticsTracker private constructor(
      */
     fun stopTracking(reason: String = "Stopped by user") {
         heartbeatHandler.removeCallbacks(heartbeatRunnable)
-        stopAdProgressTracking()
         eventSender.sendStoppedEvent(
             player.currentPosition,
             player.duration,
@@ -550,7 +505,6 @@ class VideoAnalyticsTracker private constructor(
      */
     fun release() {
         heartbeatHandler.removeCallbacks(heartbeatRunnable)
-        stopAdProgressTracking()
         if (config.enableSGAITracking) {
             adExtractor?.release()
             adsLoader.release()
