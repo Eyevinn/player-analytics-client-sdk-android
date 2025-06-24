@@ -221,7 +221,7 @@ class VideoAnalyticsTracker private constructor(
                     lastAdIndex = -1
                     isCurrentlyPaused = false
                     stopAdProgressTracking()
-                    Log.d(TAG, "Ad completed via onPositionDiscontinuity")
+                    Log.d(TAG, "Ad completed via onPositionDiscontinuity : adBreakId")
                 } else if (!config.enableSGAITracking && reason == Player.DISCONTINUITY_REASON_SEEK) {
 
                     eventSender.sendSeekingEvent(player.currentPosition, player.duration)
@@ -277,9 +277,6 @@ class VideoAnalyticsTracker private constructor(
                                 // Only send if this is a new ad
                                 if (currentAdKey != adKey) {
                                     currentAdKey = adKey
-                                    sendTrackingEvent(adKey, SGAIAdTrackingEvent.IMPRESSION)
-                                    sendTrackingEvent(adKey, SGAIAdTrackingEvent.START)
-                                    Log.d(TAG, "Ad started via AnalyticsListener: $adKey")
                                 }
                             }
                         }

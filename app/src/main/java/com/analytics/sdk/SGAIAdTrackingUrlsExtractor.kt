@@ -169,10 +169,9 @@ class SGAIAdTrackingUrlsExtractor(
         try {
             val adResponse = fetchAdAssets(assetListUrl)
             processAdResponse(adResponse, adBreakId)
-            Log.d("****** TrackingDebug", "Parsed adTrackingUrlsMap: $adTrackingUrlsMap")
+            Log.d("TrackingDebug", "Parsed adTrackingUrlsMap: $adTrackingUrlsMap")
         } catch (e: Exception) {
-            Log.e(TAG, "****** Failed to extract tracking URLs from $assetListUrl: ${e.message}")
-            Log.d("*** TrackingDebug", "Parsed adTrackingUrlsMap: $adTrackingUrlsMap")
+            Log.e(TAG, "Failed to extract tracking URLs from $assetListUrl: ${e.message}")
         }
     }
 
@@ -216,7 +215,6 @@ class SGAIAdTrackingUrlsExtractor(
             }
         }
 
-        Log.d(TAG, "Total ads with tracking: ${adTrackingUrlsMap.size}")
     }
 
     private fun triggerPodEvent(eventType: String, podId: String) {

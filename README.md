@@ -8,7 +8,7 @@ A comprehensive video player SDK for Android that combines ExoPlayer with built-
 - **Integrated ExoPlayer**: Built-in video player with no additional setup required
 - **Comprehensive Analytics**: Automatic tracking of key video metrics (play, pause, buffering, etc.)
 - **SGAI Ad Tracking**: Complete Server-Guided Ad Insertion tracking with automatic ad detection
-- **Live and VOD SGAI Support**: Works with both live streams (X-ASSET-LIST) and VOD streams (X-ASSET-URI).
+- **Live and VOD SGAI Support**: Works with streams using `X-ASSET-LIST` or `X-ASSET-URI` for ad signaling, as per the HLS SGAI standard.
 - **Easy Integration**: Simple API for quick implementation
 - **Performance Monitoring**: Track buffering, bitrate changes, and errors
 - **VAST Support**: Parse VAST XML for comprehensive ad tracking
@@ -87,7 +87,6 @@ val exoPlayer = ExoPlayer.Builder(context).build()
 val videoAnalyticsTracker = VideoAnalyticsTracker.Builder(context, exoPlayer)
     .setEventSinkUrl("https://your-analytics-endpoint.com")
     .setContentTitle("My Video")
-    .setIsLive(false)
     .setDeviceType("Android Sample App")
     .setHeartbeatInterval(30_000L)
     // Note: SGAI tracking is disabled by default
@@ -361,11 +360,9 @@ videoAnalyticsTracker.sendCustomEvent("CUSTOM_EVENT_TYPE")
 
 #### SGAI Ad Event Support
 
-Supports both live and VOD SGAI streams.
+```kotlin
 
-Live streams are handled using #EXT-X-DATERANGE and X-ASSET-LIST.
-
-VOD streams use X-ASSET-URI.
+Live and VOD streams are handled using #EXT-X-DATERANGE with either X-ASSET-LIST or X-ASSET-URI.
 
 The SDK automatically detects and fetches asset lists for either type, extracting tracking URLs for events such as impression, start, quartiles, complete, pause/resume, pod events, and more.
 ``` 
@@ -373,7 +370,7 @@ The SDK automatically detects and fetches asset lists for either type, extractin
 ### SGAI Stream Requirements
 ```
 
-**HLS stream should use standard SGAI cues for ad breaks and reference asset lists via X-ASSET-LIST (for live):**
+**HLS stream should use standard SGAI cues for ad breaks and reference asset lists via X-ASSET-LIST:**
 
 ```m3u8
 #EXTINF:6.0,
@@ -563,7 +560,7 @@ See `SGAIPlayerActivity.kt` and `SimplePlayerActivity.kt` for complete implement
 "Ad started (onStart): ad-session-1_0_0"
 "Ad completed (onAssetListLoadCompleted): ad-session-1_0_0"
 "Sending impression event for ad ad-session-1_0_0 with 1 URLs"
-"****** TrackingDebug: Parsed adTrackingUrlsMap"
+"TrackingDebug: Parsed adTrackingUrlsMap"
 ```
 
 **Error indicators:**

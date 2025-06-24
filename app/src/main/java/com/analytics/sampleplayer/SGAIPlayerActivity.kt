@@ -18,8 +18,7 @@ class SGAIPlayerActivity : ComponentActivity() {
     private lateinit var videoAnalyticsTracker: VideoAnalyticsTracker
     private lateinit var playerView: PlayerView
 
-   // private val sgaiStreamUrl = "http://10.0.2.2:3333/test/blender.m3u8" live
-    private val sgaiStreamUrl = "http://10.0.2.2:3333/x36xhzz/x36xhzz.m3u8"
+    private val sgaiStreamUrl = "" // Add your stream URL here
     private val eventSinkUrl = "https://eyevinnlab-epasdev.eyevinn-player-analytics-eventsink.auto.prod.osaas.io"
 
     @OptIn(UnstableApi::class)
