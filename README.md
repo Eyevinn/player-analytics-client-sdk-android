@@ -8,7 +8,7 @@ A comprehensive video player SDK for Android that combines ExoPlayer with built-
 - **Integrated ExoPlayer**: Built-in video player with no additional setup required
 - **Comprehensive Analytics**: Automatic tracking of key video metrics (play, pause, buffering, etc.)
 - **SGAI Ad Tracking**: Complete Server-Guided Ad Insertion tracking with automatic ad detection
-- **Fragmented MP4 Ad Support**: Optimized for fragmented MP4 ads (ExoPlayer limitation with regular MP4)
+- **Live and VOD SGAI Support**: Works with both live streams (X-ASSET-LIST) and VOD streams (X-ASSET-URI).
 - **Easy Integration**: Simple API for quick implementation
 - **Performance Monitoring**: Track buffering, bitrate changes, and errors
 - **VAST Support**: Parse VAST XML for comprehensive ad tracking
@@ -356,11 +356,24 @@ val trackingUrls = videoAnalyticsTracker.getTrackingUrlsForAd(adKey)
 ```kotlin
 // Send custom analytics event
 videoAnalyticsTracker.sendCustomEvent("CUSTOM_EVENT_TYPE")
+
 ```
 
-### SGAI Stream Requirements
+#### SGAI Ad Event Support
 
-Your HLS stream **must** include proper ad markers and use **fragmented MP4 ads**:
+Supports both live and VOD SGAI streams.
+
+Live streams are handled using #EXT-X-DATERANGE and X-ASSET-LIST.
+
+VOD streams use X-ASSET-URI.
+
+The SDK automatically detects and fetches asset lists for either type, extracting tracking URLs for events such as impression, start, quartiles, complete, pause/resume, pod events, and more.
+``` 
+
+### SGAI Stream Requirements
+```
+
+**HLS stream should use standard SGAI cues for ad breaks and reference asset lists via X-ASSET-LIST (for live):**
 
 ```m3u8
 #EXTINF:6.0,
@@ -381,7 +394,7 @@ The asset list should return JSON with tracking information:
 {
   "ASSETS": [
     {
-      "URI": "ad-creative-fragmented.mp4",
+      "URI": "ad-creative.mp4",
       "X-AD-CREATIVE-SIGNALING": {
         "payload": {
           "tracking": [
@@ -468,7 +481,6 @@ The SDK includes built-in error handling and logging. Monitor logs with these ta
 - `SGAIAdImpressionSender` - Tracking request status
 - `TrackingEvent` - Ad tracking events
 - `PodTracking` - Ad pod events
-- `FragmentedMp4Extractor` - **Watch for NullPointerException (indicates non-fragmented MP4 ads)**
 
 #### Debug Methods
 
@@ -542,30 +554,7 @@ See `SGAIPlayerActivity.kt` and `SimplePlayerActivity.kt` for complete implement
 - Android API 21+
 - ExoPlayer 1.8.0-alpha01+ (required for SGAI functionality)
 - Kotlin Coroutines support
-- **Fragmented MP4 ads** (for SGAI functionality)
 
-## Troubleshooting
-
-### Common Issues
-
-1. **Ads not playing**: Ensure your stream uses fragmented MP4 ads
-2. **NullPointerException in FragmentedMp4Extractor**: This occurs when using non-fragmented MP4 ads. Convert to fragmented MP4 using FFmpeg.
-3. **Tracking URLs not found**: Check manifest format and asset list JSON structure
-4. **Network issues on emulator**: Use `10.0.2.2` instead of `localhost`
-5. **ExoPlayer version**: Ensure you're using 1.8.0-alpha01 or later
-
-### Error: Non-Fragmented MP4 Ads
-
-**Error signature:**
-```
-java.lang.NullPointerException
-at androidx.media3.extractor.mp4.FragmentedMp4Extractor.onMoovContainerAtomRead
-```
-
-**Solution:** Convert your ad creatives to fragmented MP4:
-```bash
-ffmpeg -i regular_ad.mp4 -movflags frag_keyframe+empty_moov fragmented_ad.mp4
-```
 
 ### Debug Logs to Monitor
 
@@ -581,7 +570,6 @@ ffmpeg -i regular_ad.mp4 -movflags frag_keyframe+empty_moov fragmented_ad.mp4
 ```
 "Failed to extract tracking URLs"
 "No tracking URLs found for event"
-"FragmentedMp4Extractor" exceptions
 ```
 
 
@@ -591,36 +579,14 @@ ffmpeg -i regular_ad.mp4 -movflags frag_keyframe+empty_moov fragmented_ad.mp4
 
 **This SDK is designed for ExoPlayer version 1.8.0-alpha01 and later versions.**
 
-Due to current limitations in Android ExoPlayer's HLS interstitials implementation, SGAI ad tracking has specific requirements that will be improved in future ExoPlayer releases.
 
-###  **Important: Fragmented MP4 Requirement for SGAI Ads**
+**SGAI Ad Tracking Implementation Details**
 
-**The SDK is optimized for fragmented MP4 ads due to ExoPlayer's current limitations with regular MP4 files in HLS interstitials.**
+The SDK supports both live and VOD SGAI streams.
 
--  **Use**: Fragmented MP4 (`.mp4` with fragmentation)
--  **Avoid**: Regular MP4, WebM, or other formats
-- **Why**: ExoPlayer 1.8.0-alpha01 has known issues with non-fragmented MP4 in HLS interstitials
+Current status: All ad tracking URLs are fetched and parsed by the SDK, since ExoPlayer does not provide them directly.
 
-** What happens with non-fragmented ads:**
-If you use regular (non-fragmented) MP4 ads, you will encounter this error:
-```
-java.lang.NullPointerException
-at androidx.media3.common.util.Assertions.checkNotNull(Assertions.java:155)
-at androidx.media3.extractor.mp4.FragmentedMp4Extractor.onMoovContainerAtomRead(FragmentedMp4Extractor.java:685)
-```
-
-**Ensure your ad creatives are encoded as fragmented MP4:**
-```bash
-# Example FFmpeg command for fragmented MP4
-ffmpeg -i input.mp4 -movflags frag_keyframe+empty_moov -f mp4 output_fragmented.mp4
-```
-
-**Verification command:**
-```bash
-# Check if MP4 is fragmented
-ffprobe -v quiet -show_entries format=format_name -of default=noprint_wrappers=1:nokey=1 your_ad.mp4
-# Should show: mov,mp4,m4a,3gp,3g2,mj2 (fragmented)
-```
+Future status: Once ExoPlayer supports ad tracking events, the SDK will use ExoPlayer’s built-in features.
 
 ---
 
