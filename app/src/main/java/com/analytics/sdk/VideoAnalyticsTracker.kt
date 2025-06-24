@@ -22,11 +22,14 @@ import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.hls.HlsInterstitialsAdsLoader
+import androidx.media3.exoplayer.hls.HlsManifest
+import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.IOException
+import java.net.URI
 
 /**
  * Unified tracker that monitors an ExoPlayer instance for both video analytics
@@ -48,8 +51,7 @@ class VideoAnalyticsTracker private constructor(
 
     // SGAI ad tracking state
     private var playerViewContainer: ViewGroup? = null
-    private var adExtractor: SGAIAdTrackingUrlsExtractor? = null
-    private val adTrackingUrlsMap: MutableMap<String, Map<String, List<String>>> = mutableMapOf()
+    private var adExtractor: SGAIAdTrackingUrlsExtractor? = SGAIAdTrackingUrlsExtractor()
     private val sentTrackingEvents: MutableMap<String, MutableSet<String>> = mutableMapOf()
     private var wasPlayingBeforePause = false
     private var isCurrentlyPaused = false
@@ -57,7 +59,7 @@ class VideoAnalyticsTracker private constructor(
     private val impressionSender = SGAIAdImpressionSender()
     private var currentAdKey: String? = null
     private var lastAdQuartile = 0
-
+    private val processedAdIds = mutableSetOf<String>()
 
     private val heartbeatHandler = Handler(Looper.getMainLooper())
     private val adProgressHandler = Handler(Looper.getMainLooper())
@@ -185,6 +187,51 @@ class VideoAnalyticsTracker private constructor(
                 }
             }
 
+            override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                val manifest = player.currentManifest
+                if (manifest is HlsManifest) {
+                    val isLive = manifest.mediaPlaylist.playlistType == HlsMediaPlaylist.PLAYLIST_TYPE_EVENT
+                    val isVod = manifest.mediaPlaylist.playlistType == HlsMediaPlaylist.PLAYLIST_TYPE_VOD
+                    Log.d(TAG, "HLS Manifest is Live? $isLive or VoD $isVod")
+
+                    for (ad in manifest.mediaPlaylist.interstitials) {
+                        Log.d(TAG, "Found interstitial ad: ${ad.id}")
+
+                        // Skip if we've already processed this ad
+                        if (processedAdIds.contains(ad.id)) {
+                            Log.d(TAG, "Ad ${ad.id} already processed, skipping")
+                            continue
+                        }
+                        processedAdIds.add(ad.id)
+
+                        // Extract the asset URI or asset list URI
+                        val assetUri = ad.assetUri
+                        val assetListUri = ad.assetListUri
+
+                        Log.d(TAG, "Ad tracking URLs: $assetUri or $assetListUri")
+
+                        // Use the extractor to process the ad manifest
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                val success = adExtractor?.extractTrackingUrls(assetListUri.toString(), ad.id)
+                                if (success == true) {
+                                    Log.d(TAG, "Successfully extracted tracking URLs for ad ${ad.id}")
+                                    // Initialize sent events tracking for this ad
+                                    val adIndex = manifest.mediaPlaylist.interstitials.indexOf(ad)
+                                    val adKey = "${adExtractor?.currentAdsId}_0_${adIndex}"
+                                    sentTrackingEvents[adKey] = mutableSetOf()
+                                    Log.d(TAG, "Initialized tracking for ad key: $adKey")
+                                } else {
+                                    Log.w(TAG, "Failed to extract tracking URLs for ad ${ad.id}")
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error extracting tracking URLs for ad ${ad.id}: ${e.message}")
+                            }
+                        }
+                    }
+                }
+            }
+
             override fun onPositionDiscontinuity(
                 oldPosition: Player.PositionInfo,
                 newPosition: Player.PositionInfo,
@@ -201,7 +248,6 @@ class VideoAnalyticsTracker private constructor(
                         lastAdQuartile = 0
                         currentAdKey = "ad-session-1_${adGroupIndex}_${adIndexInAdGroup}"
                         isCurrentlyPaused = false
-
 
                         if (adIndexInAdGroup == 0) { // First ad in the pod
                             val podKey = "pod_ad-session-1_${adGroupIndex}"
@@ -223,7 +269,6 @@ class VideoAnalyticsTracker private constructor(
                     stopAdProgressTracking()
                     Log.d(TAG, "Ad completed via onPositionDiscontinuity : adBreakId")
                 } else if (!config.enableSGAITracking && reason == Player.DISCONTINUITY_REASON_SEEK) {
-
                     eventSender.sendSeekingEvent(player.currentPosition, player.duration)
                     seekingEventOngoing = true
                 }
@@ -406,7 +451,6 @@ class VideoAnalyticsTracker private constructor(
      */
     fun setMainMediaItem(streamUrl: String) {
         if (config.enableSGAITracking) {
-            setupSGAIExtractor(streamUrl)
             val adViewProvider = object : AdViewProvider {
                 override fun getAdViewGroup(): ViewGroup? = playerViewContainer
                 override fun getAdOverlayInfos(): List<AdOverlayInfo> {
@@ -441,39 +485,6 @@ class VideoAnalyticsTracker private constructor(
         player.prepare()
     }
 
-    private fun setupSGAIExtractor(streamUrl: String) {
-        SGAIAdTrackingUrlsExtractor(streamUrl) { adUri ->
-            Log.d(TAG, "Ad break found with URI: $adUri")
-        }.also {
-            adExtractor = it
-            it.setAdsId("ad-session-1")
-            it.addPodTrackingCallback { eventType, podId ->
-                when (eventType) {
-                    SGAIAdTrackingEvent.POD_START.eventName -> {
-                        Log.d(TAG, "Pod started: $podId")
-                        activePods.add(podId)
-                        // Copy pod tracking URLs to main map
-                        it.getTrackingUrlsForAd(podId)?.let { podUrls ->
-                            adTrackingUrlsMap[podId] = podUrls
-                            Log.d(TAG, "Copied pod tracking URLs for $podId: ${podUrls.keys}")
-                        }
-                    }
-                    SGAIAdTrackingEvent.POD_END.eventName -> {
-                        Log.d(TAG, "Pod ended: $podId")
-                        activePods.remove(podId)
-                    }
-                }
-            }
-
-            CoroutineScope(Dispatchers.Main).launch {
-                it.processManifest()
-            }
-
-            // Periodically sync tracking URLs from extractor to main tracker
-            syncTrackingUrls()
-        }
-    }
-
     private fun handleAdPause() {
         currentAdKey?.let { adKey ->
             if (!isCurrentlyPaused) {
@@ -495,9 +506,6 @@ class VideoAnalyticsTracker private constructor(
     }
 
     private fun sendTrackingEvent(adKey: String, eventType: SGAIAdTrackingEvent) {
-        // Sync URLs before sending
-        syncTrackingUrls()
-
         val sentEvents = sentTrackingEvents.getOrPut(adKey) { mutableSetOf() }
         val eventTypeName = eventType.eventName
 
@@ -508,14 +516,17 @@ class VideoAnalyticsTracker private constructor(
             normalizeEventName(mapEventName(eventTypeName))
         ).distinct()
 
-        val mappedAdKey = adTrackingUrlsMap.keys.singleOrNull() ?: adKey.takeIf { adTrackingUrlsMap.containsKey(it) } ?: adKey
+        val extractor = adExtractor ?: return
+        val allTrackingUrls = extractor.getAllTrackingUrls()
+
+        val mappedAdKey = allTrackingUrls.keys.find { it.contains(adKey) }
+            ?: allTrackingUrls.keys.singleOrNull()
+            ?: adKey
 
         val urls = allPossibleKeys
             .asSequence()
             .map { key ->
-                adTrackingUrlsMap[mappedAdKey]?.get(key)
-                    ?: adExtractor?.getTrackingUrlsForAd(mappedAdKey)?.get(key)
-                    ?: emptyList()
+                extractor.getTrackingUrlsForAd(mappedAdKey)?.get(key) ?: emptyList()
             }
             .firstOrNull { it.isNotEmpty() } ?: emptyList()
 
@@ -526,11 +537,14 @@ class VideoAnalyticsTracker private constructor(
             if (eventType != SGAIAdTrackingEvent.PAUSE && eventType != SGAIAdTrackingEvent.RESUME) {
                 sentEvents.add(eventTypeName)
             }
+        } else {
+            Log.d(TAG, "Available keys in extractor: ${allTrackingUrls.keys}")
+            Log.d(TAG, "Tried mapped key: $mappedAdKey")
         }
     }
 
     private fun sendPodTrackingEvent(podKey: String, eventType: SGAIAdTrackingEvent) {
-        syncTrackingUrls()
+        val extractor = adExtractor ?: return
 
         val allPossibleKeys = listOf(
             eventType.eventName,
@@ -541,9 +555,7 @@ class VideoAnalyticsTracker private constructor(
 
         var urls: List<String> = emptyList()
         for (key in allPossibleKeys) {
-            urls = adTrackingUrlsMap[podKey]?.get(key)
-                ?: adExtractor?.getTrackingUrlsForAd(podKey)?.get(key)
-                        ?: emptyList()
+            urls = extractor.getTrackingUrlsForAd(podKey)?.get(key) ?: emptyList()
             if (urls.isNotEmpty()) break
         }
 
@@ -552,7 +564,7 @@ class VideoAnalyticsTracker private constructor(
             Log.d(TAG, "Pod Event URLs: $urls")
             impressionSender.sendMultipleImpressions(urls, eventType, podKey)
         } else {
-            Log.d(TAG, "Available pod keys in extractor: ${adExtractor?.getTrackingUrlsForAd(podKey)?.keys}")
+            Log.d(TAG, "Available pod keys in extractor: ${extractor.getAllTrackingUrls().keys}")
         }
     }
 
@@ -614,19 +626,6 @@ class VideoAnalyticsTracker private constructor(
     }
 
     /**
-     * Sync tracking URLs from extractor to main tracking map
-     */
-    private fun syncTrackingUrls() {
-        adExtractor?.getAllTrackingUrls()?.forEach { (key, urls) ->
-            if (!adTrackingUrlsMap.containsKey(key)) {
-                adTrackingUrlsMap[key] = urls
-                sentTrackingEvents[key] = mutableSetOf()
-                Log.d(TAG, "Synced tracking URLs for $key: ${urls.keys}")
-            }
-        }
-    }
-
-    /**
      * Start heartbeat monitoring
      */
     fun startTracking() {
@@ -652,6 +651,8 @@ class VideoAnalyticsTracker private constructor(
     fun release() {
         heartbeatHandler.removeCallbacks(heartbeatRunnable)
         stopAdProgressTracking()
+        processedAdIds.clear()
+        sentTrackingEvents.clear()
         if (config.enableSGAITracking) {
             adExtractor?.release()
             adsLoader.release()
@@ -672,5 +673,9 @@ class VideoAnalyticsTracker private constructor(
             player.duration,
             payload
         )
+    }
+
+    private fun normalizeEventName(eventName: String): String {
+        return eventName.lowercase().replace("_", "")
     }
 }
