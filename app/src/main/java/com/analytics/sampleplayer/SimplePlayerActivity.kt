@@ -1,6 +1,7 @@
 package com.analytics.sampleplayer
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -9,21 +10,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.analytics.sdk.VideoAnalyticsTracker
 
-/**
- * A simple Activity that:
- * 1) Creates its own ExoPlayer
- * 2) Uses VideoAnalyticsTracker to send analytics events
- * 3) Embeds the PlayerView in a Jetpack Compose layout
- */
 class SimpleSeparatedPlayerActivity : ComponentActivity() {
 
     private lateinit var exoPlayer: ExoPlayer
-    private lateinit var analyticsTracker: VideoAnalyticsTracker
+    private lateinit var videoAnalyticsTracker: VideoAnalyticsTracker
     private lateinit var playerView: PlayerView
 
     // Customize these as needed
@@ -33,22 +27,23 @@ class SimpleSeparatedPlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Create ExoPlayer instance
         exoPlayer = ExoPlayer.Builder(this).build().apply {
             playWhenReady = false
         }
 
-        analyticsTracker = VideoAnalyticsTracker.Builder(exoPlayer)
+        // Create VideoAnalyticsTracker with SGAI tracking disabled (default)
+        videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, exoPlayer)
             .setEventSinkUrl(eventSinkUrl)
             .setContentTitle("Sample Video")
-            .setIsLive(false)
             .setDeviceType("Android Sample App")
             .setHeartbeatInterval(30_000L)
             .build()
 
-        exoPlayer.setMediaItem(MediaItem.fromUri(assetUrl))
+        // Set the main media item (simple video, no ads)
+        videoAnalyticsTracker.setMainMediaItem(assetUrl)
 
-        exoPlayer.prepare()
-
+        // Create PlayerView
         playerView = PlayerView(this).apply {
             player = exoPlayer
         }
@@ -58,25 +53,67 @@ class SimpleSeparatedPlayerActivity : ComponentActivity() {
                 VideoPlayerScreen(playerView)
             }
         }
+
+        Log.i("SimplePlayer", "Video URL: $assetUrl")
+        Log.i("SimplePlayer", "Event Sink URL: $eventSinkUrl")
     }
 
     override fun onStart() {
         super.onStart()
-        // Start heartbeat tracking
-        analyticsTracker.startTracking()
+
+        // Start video analytics tracking
+        videoAnalyticsTracker.startTracking()
+
+        // Start playback
         exoPlayer.play()
+
+        Log.i("SimplePlayer", "Started video analytics tracking and playback")
     }
 
     override fun onStop() {
         super.onStop()
-        analyticsTracker.stopTracking("User left the app")
+
+        // Pause playback
         exoPlayer.pause()
+
+        // Stop tracking with reason
+        videoAnalyticsTracker.stopTracking("User left the app")
+
+        Log.i("SimplePlayer", "Stopped tracking and playback")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        analyticsTracker.release()
+
+        // Release all resources
+        videoAnalyticsTracker.release()
         exoPlayer.release()
+
+        Log.i("SimplePlayer", "Released all resources")
+    }
+
+    /**
+     * Optional: Send custom analytics event for simple video playback
+     */
+    private fun sendCustomVideoEvent(eventType: String) {
+        try {
+            videoAnalyticsTracker.sendCustomEvent(eventType)
+            Log.d("SimplePlayer", "Sent custom video event: $eventType")
+        } catch (e: Exception) {
+            Log.e("SimplePlayer", "Failed to send custom event: $eventType", e)
+        }
+    }
+
+    /**
+     * Optional: Manual event sending for debugging
+     */
+    private fun debugVideoAnalytics() {
+        val position = exoPlayer.currentPosition
+        val duration = exoPlayer.duration
+        Log.d("SimplePlayer", "Current playback position: ${position}ms, duration: ${duration}ms")
+
+        // Example of sending a custom event with current playback state
+        sendCustomVideoEvent("DEBUG_CHECKPOINT")
     }
 }
 
