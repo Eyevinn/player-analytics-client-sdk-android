@@ -58,14 +58,13 @@ class VideoAnalyticsTracker private constructor(
     private var currentAdKey: String? = null
     private var lastAdQuartile = 0
 
-    // Handlers
+
     private val heartbeatHandler = Handler(Looper.getMainLooper())
     private val adProgressHandler = Handler(Looper.getMainLooper())
 
     // SGAI ad components
     private val adsLoader: HlsInterstitialsAdsLoader = HlsInterstitialsAdsLoader(context)
 
-    // Runnables
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
             eventSender.sendHeartbeatEvent(player.currentPosition, player.duration)
@@ -112,7 +111,6 @@ class VideoAnalyticsTracker private constructor(
 
         fun setEventSinkUrl(url: String) = apply { this.eventSinkUrl = url }
         fun setContentTitle(title: String?) = apply { this.contentTitle = title }
-        fun setIsLive(isLive: Boolean) = apply { this.isLive = isLive }
         fun setDeviceType(deviceType: String) = apply { this.deviceType = deviceType }
         fun setHeartbeatInterval(intervalMs: Long) = apply { this.heartbeatIntervalMs = intervalMs }
         fun enableSGAIAdTracking(enable: Boolean) = apply { this.enableSGAITracking = enable }
@@ -204,7 +202,7 @@ class VideoAnalyticsTracker private constructor(
                         currentAdKey = "ad-session-1_${adGroupIndex}_${adIndexInAdGroup}"
                         isCurrentlyPaused = false
 
-                        // Handle pod start event for new ad group
+
                         if (adIndexInAdGroup == 0) { // First ad in the pod
                             val podKey = "pod_ad-session-1_${adGroupIndex}"
                             activePods.add(podKey)
@@ -225,7 +223,7 @@ class VideoAnalyticsTracker private constructor(
                     stopAdProgressTracking()
                     Log.d(TAG, "Ad completed via onPositionDiscontinuity")
                 } else if (!config.enableSGAITracking && reason == Player.DISCONTINUITY_REASON_SEEK) {
-                    // Handle regular video seeking
+
                     eventSender.sendSeekingEvent(player.currentPosition, player.duration)
                     seekingEventOngoing = true
                 }
@@ -328,7 +326,7 @@ class VideoAnalyticsTracker private constructor(
             ) {
                 Log.d(TAG, "AD COMPLETED for $adsId at group $adGroupIndex, index $adIndexInAdGroup")
                 val adKey = "${adsId}_${adGroupIndex}_${adIndexInAdGroup}"
-                // This is where the original code sent the COMPLETE event
+
                 sendTrackingEvent(adKey, SGAIAdTrackingEvent.COMPLETE)
                 checkAndCompletePod(adGroupIndex)
             }
@@ -371,7 +369,6 @@ class VideoAnalyticsTracker private constructor(
             ) {
                 val adKey = "${adsId}_${adGroupIndex}_${adIndexInAdGroup}"
                 Log.e(TAG, "Failed to load ad asset list for $adKey", ioException)
-                // TODO send event on failure (e.g., unable to access localhost from emulator)
             }
 
             override fun onAssetListLoadCompleted(
@@ -558,8 +555,6 @@ class VideoAnalyticsTracker private constructor(
             Log.d(TAG, "Pod Event URLs: $urls")
             impressionSender.sendMultipleImpressions(urls, eventType, podKey)
         } else {
-            Log.d(TAG, "No tracking URLs found for event ${eventType.eventName} on pod $podKey")
-            Log.d(TAG, "Available pod keys in adTrackingUrlsMap: ${adTrackingUrlsMap[podKey]?.keys}")
             Log.d(TAG, "Available pod keys in extractor: ${adExtractor?.getTrackingUrlsForAd(podKey)?.keys}")
         }
     }

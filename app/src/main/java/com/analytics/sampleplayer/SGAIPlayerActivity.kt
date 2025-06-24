@@ -18,12 +18,9 @@ class SGAIPlayerActivity : ComponentActivity() {
     private lateinit var videoAnalyticsTracker: VideoAnalyticsTracker
     private lateinit var playerView: PlayerView
 
-    // - live
-    private val sgaiStreamUrl = "http://10.0.2.2:3333/test/blender.m3u8"
-    // - vod
-    //private val sgaiStreamUrl = "http://10.0.2.2:3333/x36xhzz/x36xhzz.m3u8"
-    private val eventSinkUrl =
-        "https://eyevinnlab-epasdev.eyevinn-player-analytics-eventsink.auto.prod.osaas.io"
+   // private val sgaiStreamUrl = "http://10.0.2.2:3333/test/blender.m3u8" live
+    private val sgaiStreamUrl = "http://10.0.2.2:3333/x36xhzz/x36xhzz.m3u8"
+    private val eventSinkUrl = "https://eyevinnlab-epasdev.eyevinn-player-analytics-eventsink.auto.prod.osaas.io"
 
     @OptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,7 +31,6 @@ class SGAIPlayerActivity : ComponentActivity() {
         videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, player)
             .setEventSinkUrl(eventSinkUrl)
             .setContentTitle("SGAI Stream")
-            .setIsLive(false)
             .setDeviceType("Android SGAI Player")
             .setHeartbeatInterval(30_000L)
             .enableSGAIAdTracking(true)  // Enable SGAI ad tracking

@@ -36,7 +36,6 @@ class SimpleSeparatedPlayerActivity : ComponentActivity() {
         videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, exoPlayer)
             .setEventSinkUrl(eventSinkUrl)
             .setContentTitle("Sample Video")
-            .setIsLive(false)
             .setDeviceType("Android Sample App")
             .setHeartbeatInterval(30_000L)
             .build()

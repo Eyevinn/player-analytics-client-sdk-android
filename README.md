@@ -195,7 +195,6 @@ class SGAIPlayerActivity : ComponentActivity() {
         videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, player)
             .setEventSinkUrl(eventSinkUrl)
             .setContentTitle("SGAI Live Stream")
-            .setIsLive(true)
             .setDeviceType("Android SGAI Player")
             .setHeartbeatInterval(30_000L)
             .enableSGAIAdTracking(true)  // Enable SGAI ad tracking
@@ -270,7 +269,6 @@ class SimplePlayerActivity : ComponentActivity() {
         videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, exoPlayer)
             .setEventSinkUrl(eventSinkUrl)
             .setContentTitle("Sample Video")
-            .setIsLive(false)
             .setDeviceType("Android Sample App")
             .setHeartbeatInterval(30_000L)
             // Note: enableSGAIAdTracking(false) is the default
@@ -449,7 +447,6 @@ The `VideoAnalyticsTracker.Builder` supports these configuration options:
 VideoAnalyticsTracker.Builder(context, player)
     .setEventSinkUrl("https://analytics.example.com")     // Analytics endpoint
     .setContentTitle("My Content")                        // Content title
-    .setIsLive(true)                                     // Live stream flag
     .setDeviceType("Android TV")                         // Device identifier
     .setHeartbeatInterval(30_000L)                       // Heartbeat interval in ms
     .enableSGAIAdTracking(true)                          // Enable/disable SGAI
@@ -501,7 +498,6 @@ private fun debugAdTracking(adKey: String) {
 #### Builder Methods
 - `setEventSinkUrl(url: String)` - Set analytics endpoint
 - `setContentTitle(title: String?)` - Set content title
-- `setIsLive(isLive: Boolean)` - Set live stream flag
 - `setDeviceType(deviceType: String)` - Set device identifier
 - `setHeartbeatInterval(intervalMs: Long)` - Set heartbeat interval
 - `enableSGAIAdTracking(enable: Boolean)` - Enable/disable SGAI tracking
