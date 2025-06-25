@@ -1,7 +1,7 @@
-
 plugins {
-    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.androidLibrary)  // Just change this one line
     alias(libs.plugins.jetbrainsKotlinAndroid)
+    id 'maven-publish'  // Only add this line
 }
 
 android {
@@ -9,7 +9,7 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId "eyevinn.com.client.sdk.android"
+        // Remove applicationId for library
         minSdk 34
         targetSdk 35
 
@@ -45,8 +45,21 @@ android {
     }
 }
 
-dependencies {
+// JitPack publishing configuration - ONLY ADD THIS BLOCK
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release  // This works for libraries
+                groupId = 'com.github.Eyevinn'
+                artifactId = 'player-analytics-client-sdk-android'
+                version = '1.0.0'
+            }
+        }
+    }
+}
 
+dependencies {
     implementation libs.androidx.media3.session
     implementation libs.androidx.media3.exoplayer
     implementation libs.androidx.media3.ui
@@ -62,16 +75,15 @@ dependencies {
     implementation libs.androidx.material3
     implementation libs.androidx.media3.ui
     implementation libs.play.services.ads
-    implementation libs.media3.exoplayer.hls // Use the latest version
-    implementation libs.retrofit // For HTTP requests
-    implementation libs.converter.gson // For HTTP requests
+    implementation libs.media3.exoplayer.hls
+    implementation libs.retrofit
+    implementation libs.converter.gson
 
     implementation "androidx.media3:media3-exoplayer:1.4.1"
     implementation "androidx.media3:media3-exoplayer-hls:1.4.1"
     implementation "androidx.media3:media3-exoplayer-dash:1.4.1"
     implementation "androidx.media3:media3-datasource-okhttp:1.4.1"
     implementation libs.interactivemedia
-
 
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit
@@ -80,5 +92,4 @@ dependencies {
     androidTestImplementation libs.androidx.ui.test.junit4
     debugImplementation libs.androidx.ui.tooling
     debugImplementation libs.androidx.ui.test.manifest
-    // implementation 'com.github.Eyevinn:player-analytics-client-sdk-android:Tag'
 }
