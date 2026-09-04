@@ -1,4 +1,4 @@
-# Eyevinn Video Analytics SDK
+# Eyevinn Player Analytics Client SDK for Android
 
 A comprehensive video player SDK for Android that combines ExoPlayer with built-in analytics tracking and SGAI (Server-Guided Ad Insertion) ad tracking capabilities. This SDK simplifies media playback implementation while providing detailed analytics on user viewing behavior and comprehensive ad tracking.
 
@@ -34,7 +34,7 @@ Add the dependency to your app level `build.gradle`:
 
 ```gradle
 dependencies {
-    implementation 'com.eyevinn:video-analytics-sdk:1.0.0'
+    implementation 'com.github.Eyevinn:player-analytics-client-sdk-android:1.0.0'
     implementation 'androidx.media3:media3-exoplayer:1.8.0-alpha01'
     implementation 'androidx.media3:media3-ui:1.8.0-alpha01'
     implementation 'androidx.media3:media3-exoplayer-hls:1.8.0-alpha01'
@@ -55,8 +55,8 @@ dependencies {
 </repositories>
 
 <dependency>
-    <groupId>com.eyevinn</groupId>
-    <artifactId>video-analytics-sdk</artifactId>
+    <groupId>com.github.Eyevinn</groupId>
+    <artifactId>player-analytics-client-sdk-android</artifactId>
     <version>1.0.0</version>
 </dependency>
 ```
@@ -624,4 +624,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-For issues and questions, please visit our [GitHub repository](https://github.com/eyevinn/video-analytics-sdk) or contact support@eyevinn.se.
+For issues and questions, please visit our [GitHub repository](https://github.com/Eyevinn/player-analytics-client-sdk-android) or join our [community on Slack](https://slack.osaas.io).
