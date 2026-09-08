@@ -69,10 +69,18 @@ class VideoAnalyticsTracker private constructor(
 
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
-            eventSender.sendHeartbeatEvent(player.currentPosition, player.duration)
+            eventSender.sendHeartbeatEvent(player.currentPosition, normalizedDuration())
             heartbeatHandler.postDelayed(this, config.heartbeatIntervalMs)
         }
     }
+
+    /**
+     * Current player duration mapped onto the EPAS wire contract. ExoPlayer reports
+     * `C.TIME_UNSET` for unknown duration (the normal state for a live stream); the spec
+     * expects `-1` for unknown, so every send site reads duration through this helper rather
+     * than forwarding the raw sentinel. See [DurationNormalizer].
+     */
+    private fun normalizedDuration(): Long = DurationNormalizer.normalizeDuration(player.duration)
 
     private val adProgressRunnable = object : Runnable {
         override fun run() {
@@ -133,13 +141,13 @@ class VideoAnalyticsTracker private constructor(
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
                         if (!config.enableSGAITracking || !player.isPlayingAd) {
-                            eventSender.sendBufferingEvent(player.currentPosition, player.duration)
+                            eventSender.sendBufferingEvent(player.currentPosition, normalizedDuration())
                             bufferingEventOngoing = true
                         }
                     }
                     Player.STATE_READY -> {
                         if (bufferingEventOngoing && (!config.enableSGAITracking || !player.isPlayingAd)) {
-                            eventSender.sendBufferedEvent(player.currentPosition, player.duration)
+                            eventSender.sendBufferedEvent(player.currentPosition, normalizedDuration())
                             bufferingEventOngoing = false
                         }
 
@@ -151,7 +159,7 @@ class VideoAnalyticsTracker private constructor(
                         // Handle regular video playback
                         if (!config.enableSGAITracking || !player.isPlayingAd) {
                             if (player.playWhenReady) {
-                                eventSender.sendPlayingEvent(player.currentPosition, player.duration)
+                                eventSender.sendPlayingEvent(player.currentPosition, normalizedDuration())
                             }
                         }
                     }
@@ -159,7 +167,7 @@ class VideoAnalyticsTracker private constructor(
                         if (!config.enableSGAITracking || !player.isPlayingAd) {
                             eventSender.sendStoppedEvent(
                                 player.currentPosition,
-                                player.duration,
+                                normalizedDuration(),
                                 "Playback ended"
                             )
                         }
@@ -179,10 +187,10 @@ class VideoAnalyticsTracker private constructor(
                 } else if (!config.enableSGAITracking || !player.isPlayingAd) {
                     // Handle regular video playback
                     if (isPlaying) {
-                        eventSender.sendPlayingEvent(player.currentPosition, player.duration)
+                        eventSender.sendPlayingEvent(player.currentPosition, normalizedDuration())
                     } else if (player.playbackState != Player.STATE_BUFFERING &&
                         player.playbackState != Player.STATE_ENDED) {
-                        eventSender.sendPausedEvent(player.currentPosition, player.duration)
+                        eventSender.sendPausedEvent(player.currentPosition, normalizedDuration())
                     }
                 }
             }
@@ -269,7 +277,7 @@ class VideoAnalyticsTracker private constructor(
                     stopAdProgressTracking()
                     Log.d(TAG, "Ad completed via onPositionDiscontinuity : adBreakId")
                 } else if (!config.enableSGAITracking && reason == Player.DISCONTINUITY_REASON_SEEK) {
-                    eventSender.sendSeekingEvent(player.currentPosition, player.duration)
+                    eventSender.sendSeekingEvent(player.currentPosition, normalizedDuration())
                     seekingEventOngoing = true
                 }
             }
@@ -277,7 +285,7 @@ class VideoAnalyticsTracker private constructor(
             override fun onPlayerError(error: PlaybackException) {
                 eventSender.sendErrorEvent(
                     player.currentPosition,
-                    player.duration,
+                    normalizedDuration(),
                     "playback",
                     error.errorCode.toString(),
                     error.message
@@ -298,7 +306,7 @@ class VideoAnalyticsTracker private constructor(
 
                     eventSender.sendBitrateChangedEvent(
                         player.currentPosition,
-                        player.duration,
+                        normalizedDuration(),
                         bitrateKbps,
                         width,
                         height
@@ -640,7 +648,7 @@ class VideoAnalyticsTracker private constructor(
         stopAdProgressTracking()
         eventSender.sendStoppedEvent(
             player.currentPosition,
-            player.duration,
+            normalizedDuration(),
             reason
         )
     }
@@ -670,7 +678,7 @@ class VideoAnalyticsTracker private constructor(
             AnalyticsEventType.valueOf(eventType.uppercase()),
             System.currentTimeMillis(),
             player.currentPosition,
-            player.duration,
+            normalizedDuration(),
             payload
         )
     }
