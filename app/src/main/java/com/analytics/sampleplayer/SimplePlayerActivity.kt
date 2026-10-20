@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.analytics.sdk.StopReason
 import com.analytics.sdk.VideoAnalyticsTracker
 
 class SimpleSeparatedPlayerActivity : ComponentActivity() {
@@ -77,7 +78,7 @@ class SimpleSeparatedPlayerActivity : ComponentActivity() {
         exoPlayer.pause()
 
         // Stop tracking with reason
-        videoAnalyticsTracker.stopTracking("User left the app")
+        videoAnalyticsTracker.stopTracking(StopReason.ABORTED)
 
         Log.i("SimplePlayer", "Stopped tracking and playback")
     }

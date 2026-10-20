@@ -48,6 +48,7 @@ class VideoAnalyticsTracker private constructor(
     private var loadedEventSent = false
     private var bufferingEventOngoing = false
     private var seekingEventOngoing = false
+    private val stoppedOnce = StoppedOnce()
 
     // SGAI ad tracking state
     private var playerViewContainer: ViewGroup? = null
@@ -165,11 +166,7 @@ class VideoAnalyticsTracker private constructor(
                     }
                     Player.STATE_ENDED -> {
                         if (!config.enableSGAITracking || !player.isPlayingAd) {
-                            eventSender.sendStoppedEvent(
-                                player.currentPosition,
-                                normalizedDuration(),
-                                "Playback ended"
-                            )
+                            sendStoppedOnce(StopReason.ENDED)
                         }
                     }
                 }
@@ -290,6 +287,9 @@ class VideoAnalyticsTracker private constructor(
                     error.errorCode.toString(),
                     error.message
                 )
+                // onPlayerError is fatal (the player stops), so the session ends here. EPAS: the
+                // stopped after an error SHOULD carry reason "error".
+                sendStoppedOnce(StopReason.ERROR)
             }
         })
 
@@ -641,15 +641,35 @@ class VideoAnalyticsTracker private constructor(
     }
 
     /**
-     * Stop heartbeat monitoring and send stopped event
+     * Stop heartbeat monitoring and end the session. Sends `stopped` with [reason] (default
+     * [StopReason.ABORTED]) unless the session has already ended, e.g. the item played to the end.
      */
-    fun stopTracking(reason: String = "Stopped by user") {
+    fun stopTracking(reason: StopReason = StopReason.ABORTED) {
+        sendStoppedOnce(reason)
+    }
+
+    /**
+     * Free-text variant kept for source compatibility. The text is not sent: EPAS only allows the
+     * [StopReason] values, so it is mapped with [StopReason.fromLegacyText] (spec values are kept,
+     * anything else becomes `aborted`).
+     */
+    @Deprecated(
+        "Pass a StopReason; free text is not an EPAS stop reason",
+        ReplaceWith("stopTracking(StopReason.ABORTED)")
+    )
+    fun stopTracking(reason: String) {
+        stopTracking(StopReason.fromLegacyText(reason))
+    }
+
+    /** Sends `stopped` at most once per session and stops the periodic work that belongs to it. */
+    private fun sendStoppedOnce(reason: StopReason) {
         heartbeatHandler.removeCallbacks(heartbeatRunnable)
         stopAdProgressTracking()
+        if (!stoppedOnce.tryMark()) return
         eventSender.sendStoppedEvent(
             player.currentPosition,
             normalizedDuration(),
-            reason
+            reason.value
         )
     }
 
@@ -657,8 +677,8 @@ class VideoAnalyticsTracker private constructor(
      * Clean up resources. Should be called when the player is being released.
      */
     fun release() {
-        heartbeatHandler.removeCallbacks(heartbeatRunnable)
-        stopAdProgressTracking()
+        // Releasing before the session ended counts as the viewer leaving.
+        sendStoppedOnce(StopReason.ABORTED)
         processedAdIds.clear()
         sentTrackingEvents.clear()
         if (config.enableSGAITracking) {
