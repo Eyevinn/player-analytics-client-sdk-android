@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         // Remove applicationId for library
-        minSdk 34
+        minSdk 21
         targetSdk 35
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
