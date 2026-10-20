@@ -81,8 +81,8 @@ class AnalyticsEventSender(private val eventSinkUrl: String = DEFAULT_EVENT_SINK
     /**
      * Send event when content has loaded
      */
-    fun sendLoadedEvent() {
-        sendEvent(AnalyticsEventType.LOADED, System.currentTimeMillis(), 0, 0)
+    fun sendLoadedEvent(playhead: Long, duration: Long) {
+        sendEvent(AnalyticsEventType.LOADED, System.currentTimeMillis(), playhead, duration)
     }
 
     /**
