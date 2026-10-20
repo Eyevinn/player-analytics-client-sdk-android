@@ -71,17 +71,16 @@ undocumented and is a common contributor pitfall — see Section 3.
 
 ### 2.2 Module layout
 
-- Single Gradle module `:app`, declared in `settings.gradle` (`include ':app'`).
+- Two Gradle modules, declared in `settings.gradle`: `:app` and `:sample` (split in #21).
 - Despite the name, `:app` is built as an **Android library**, not an application:
   `app/build.gradle` applies `alias(libs.plugins.androidLibrary)` (`com.android.library`) with
   `namespace 'eyevinn.com.client.sdk.android'` and publishes via `maven-publish` to JitPack
   (`groupId = 'com.github.Eyevinn'`, `artifactId = 'player-analytics-client-sdk-android'`,
-  `version = '1.0.0'`).
-- The same module also carries a **runnable sample app**: a launcher activity and player
-  screens live under `app/src/main/java/com/analytics/sampleplayer/`
-  (`SGAIPlayerActivity.kt`, `SimplePlayerActivity.kt`,
-  `sgai/ui/SGAIVideoPlayerScreen.kt`), with a launcher `<activity>` and an ad-SDK
-  `<meta-data>` application id declared in `app/src/main/AndroidManifest.xml`.
+  `version = '1.0.0'`). Its manifest declares only the `INTERNET` permission.
+- `:sample` is the runnable sample app (`com.android.application`, not published): the launcher
+  activity and player screens under `sample/src/main/java/com/analytics/sampleplayer/`
+  (`SGAIPlayerActivity.kt`, `SimplePlayerActivity.kt`, `sgai/ui/SGAIVideoPlayerScreen.kt`), the
+  ad-SDK application id, the cleartext network config and the app resources.
 - The SDK sources proper live under `app/src/main/java/com/analytics/sdk/`
   (e.g. `VideoAnalyticsTracker.kt`, `AnalyticsEventSender.kt`, the SGAI tracking classes, and
   `DurationNormalizer.kt`).

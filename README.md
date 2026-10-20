@@ -544,7 +544,7 @@ val videoAnalyticsTracker = VideoAnalyticsTracker.Builder(context, player)
 
 ## Sample Implementation
 
-See `SGAIPlayerActivity.kt` and `SimplePlayerActivity.kt` for complete implementation examples using both analytics and SGAI ad tracking with Jetpack Compose.
+The runnable sample app is the `:sample` module (`sample/src/main/java/com/analytics/sampleplayer/`): see `SGAIPlayerActivity.kt` and `SimplePlayerActivity.kt` for complete implementation examples using both analytics and SGAI ad tracking with Jetpack Compose. Run it with `./gradlew :sample:installDebug`. The published library (`:app`) contains only the SDK.
 
 ## Requirements
 
