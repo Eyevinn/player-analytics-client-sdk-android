@@ -16,7 +16,8 @@ private const val STREAM_BASE_URL = ""
 class SGAIAdTrackingUrlsExtractor(
     private val onAdBreakFound: ((adUri: String) -> Unit)? = null
 ) {
-    private val TAG = "SGAIAdTrackingUrlsExtractor"
+    // Log tags may be at most 23 characters below API 26 (LongLogTag).
+    private val TAG = "SGAIAdTrackingUrls"
 
     private val adTrackingUrlsMap: MutableMap<String, Map<String, List<String>>> = mutableMapOf()
     var currentAdsId: String = "ad-session-1"
