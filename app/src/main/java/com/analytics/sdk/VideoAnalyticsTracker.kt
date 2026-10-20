@@ -45,8 +45,7 @@ class VideoAnalyticsTracker private constructor(
     private val TAG = "VideoAnalyticsTracker"
 
     // Video analytics state
-    private var loadedEventSent = false
-    private var bufferingEventOngoing = false
+    private val sequencer = PlaybackEventSequencer()
     private var seekingEventOngoing = false
     private val stoppedOnce = StoppedOnce()
 
@@ -142,26 +141,13 @@ class VideoAnalyticsTracker private constructor(
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
                         if (!config.enableSGAITracking || !player.isPlayingAd) {
-                            eventSender.sendBufferingEvent(player.currentPosition, normalizedDuration())
-                            bufferingEventOngoing = true
+                            send(sequencer.onBuffering())
                         }
                     }
                     Player.STATE_READY -> {
-                        if (bufferingEventOngoing && (!config.enableSGAITracking || !player.isPlayingAd)) {
-                            eventSender.sendBufferedEvent(player.currentPosition, normalizedDuration())
-                            bufferingEventOngoing = false
-                        }
-
-                        if (!loadedEventSent && (!config.enableSGAITracking || !player.isPlayingAd)) {
-                            eventSender.sendLoadedEvent()
-                            loadedEventSent = true
-                        }
-
-                        // Handle regular video playback
+                        // `playing` is sent only from onIsPlayingChanged (PlaybackEventSequencer).
                         if (!config.enableSGAITracking || !player.isPlayingAd) {
-                            if (player.playWhenReady) {
-                                eventSender.sendPlayingEvent(player.currentPosition, normalizedDuration())
-                            }
+                            send(sequencer.onReady())
                         }
                     }
                     Player.STATE_ENDED -> {
@@ -183,12 +169,13 @@ class VideoAnalyticsTracker private constructor(
                     wasPlayingBeforePause = isPlaying
                 } else if (!config.enableSGAITracking || !player.isPlayingAd) {
                     // Handle regular video playback
-                    if (isPlaying) {
-                        eventSender.sendPlayingEvent(player.currentPosition, normalizedDuration())
-                    } else if (player.playbackState != Player.STATE_BUFFERING &&
-                        player.playbackState != Player.STATE_ENDED) {
-                        eventSender.sendPausedEvent(player.currentPosition, normalizedDuration())
-                    }
+                    send(
+                        sequencer.onIsPlayingChanged(
+                            isPlaying,
+                            bufferingState = player.playbackState == Player.STATE_BUFFERING,
+                            ended = player.playbackState == Player.STATE_ENDED
+                        )
+                    )
                 }
             }
 
@@ -347,6 +334,20 @@ class VideoAnalyticsTracker private constructor(
                 }
             }
         })
+    }
+
+    private fun send(events: List<PlaybackEventSequencer.Event>) {
+        val playhead = player.currentPosition
+        val duration = normalizedDuration()
+        for (event in events) {
+            when (event) {
+                PlaybackEventSequencer.Event.BUFFERING -> eventSender.sendBufferingEvent(playhead, duration)
+                PlaybackEventSequencer.Event.BUFFERED -> eventSender.sendBufferedEvent(playhead, duration)
+                PlaybackEventSequencer.Event.LOADED -> eventSender.sendLoadedEvent(playhead, duration)
+                PlaybackEventSequencer.Event.PLAYING -> eventSender.sendPlayingEvent(playhead, duration)
+                PlaybackEventSequencer.Event.PAUSED -> eventSender.sendPausedEvent(playhead, duration)
+            }
+        }
     }
 
     private fun setupSGAIAdTracking() {

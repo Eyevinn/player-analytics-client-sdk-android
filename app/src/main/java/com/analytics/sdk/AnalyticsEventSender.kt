@@ -6,16 +6,48 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Responsible for sending analytics events to a configured endpoint
  */
-class AnalyticsEventSender(private val eventSinkUrl: String = DEFAULT_EVENT_SINK_URL) {
+class AnalyticsEventSender internal constructor(
+    private val eventSinkUrl: String,
+    private val transport: (url: String, body: String) -> Unit
+) {
+    constructor(eventSinkUrl: String = DEFAULT_EVENT_SINK_URL) : this(eventSinkUrl, ::postJson)
+
     private val sessionId: String = UUID.randomUUID().toString()
     private val TAG = "AnalyticsEventSender"
 
+    // Events are posted one at a time, in the order they were sent, so the eventsink receives a
+    // session's events in sequence (init first, buffered before loaded before playing). One thread
+    // per event let them arrive in any order (#19).
+    private val sendQueue: ExecutorService = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "epas-event-sender").apply { isDaemon = true }
+    }
+
     companion object {
         const val DEFAULT_EVENT_SINK_URL: String = "https://default.url"
+        private const val TIMEOUT_MS = 10_000
+
+        private fun postJson(url: String, body: String) {
+            (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = TIMEOUT_MS
+                readTimeout = TIMEOUT_MS
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                setRequestProperty("Accept", "application/json")
+                outputStream.use { os -> os.write(body.toByteArray(Charsets.UTF_8)) }
+                val responseCode = this.responseCode
+                if (responseCode !in 200..299) {
+                    Log.w("AnalyticsEventSender", "Event sink returned error code: $responseCode")
+                }
+                disconnect()
+            }
+        }
     }
 
     /**
@@ -81,8 +113,8 @@ class AnalyticsEventSender(private val eventSinkUrl: String = DEFAULT_EVENT_SINK
     /**
      * Send event when content has loaded
      */
-    fun sendLoadedEvent() {
-        sendEvent(AnalyticsEventType.LOADED, System.currentTimeMillis(), 0, 0)
+    fun sendLoadedEvent(playhead: Long, duration: Long) {
+        sendEvent(AnalyticsEventType.LOADED, System.currentTimeMillis(), playhead, duration)
     }
 
     /**
@@ -181,25 +213,13 @@ class AnalyticsEventSender(private val eventSinkUrl: String = DEFAULT_EVENT_SINK
     }
 
     private fun sendToEventSink(eventJson: JSONObject) {
-        Thread {
+        val body = eventJson.toString()
+        sendQueue.execute {
             try {
-                (URL(eventSinkUrl).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                    setRequestProperty("Accept", "application/json")
-                    outputStream.use { os ->
-                        os.write(eventJson.toString().toByteArray(Charsets.UTF_8))
-                    }
-                    val responseCode = this.responseCode
-                    if (responseCode !in 200..299) {
-                        Log.w(TAG, "Event sink returned error code: $responseCode")
-                    }
-                    disconnect()
-                }
+                transport(eventSinkUrl, body)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send event to sink", e)
             }
-        }.start()
+        }
     }
 }
