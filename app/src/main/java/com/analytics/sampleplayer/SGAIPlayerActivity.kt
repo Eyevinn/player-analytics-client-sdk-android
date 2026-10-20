@@ -10,6 +10,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.analytics.sampleplayer.sgai.ui.SGAIVideoPlayerScreen
+import com.analytics.sdk.StopReason
 import com.analytics.sdk.VideoAnalyticsTracker
 
 @UnstableApi
@@ -74,7 +75,7 @@ class SGAIPlayerActivity : ComponentActivity() {
         super.onStop()
 
         playerView.player?.pause()
-        videoAnalyticsTracker.stopTracking("User left the app")
+        videoAnalyticsTracker.stopTracking(StopReason.ABORTED)
 
         Log.i("SGAI_Analytics", "Stopped tracking and playback")
     }
