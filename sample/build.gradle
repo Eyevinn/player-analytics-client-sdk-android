@@ -61,11 +61,8 @@ dependencies {
     implementation libs.androidx.ui.tooling.preview
     implementation libs.androidx.material3
     implementation libs.play.services.ads
-    implementation libs.media3.exoplayer.hls
-    implementation "androidx.media3:media3-exoplayer:1.4.1"
-    implementation "androidx.media3:media3-exoplayer-hls:1.4.1"
-    implementation "androidx.media3:media3-exoplayer-dash:1.4.1"
-    implementation "androidx.media3:media3-datasource-okhttp:1.4.1"
+    implementation libs.androidx.media3.exoplayer.dash
+    implementation libs.androidx.media3.datasource.okhttp
     implementation libs.interactivemedia
 
     debugImplementation libs.androidx.ui.tooling
