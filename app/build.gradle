@@ -64,9 +64,6 @@ dependencies {
     implementation libs.retrofit
     implementation libs.converter.gson
 
-    implementation "androidx.media3:media3-exoplayer:1.4.1"
-    implementation "androidx.media3:media3-exoplayer-hls:1.4.1"
-
     testImplementation libs.junit
     // Real org.json on the JVM (the android.jar version is a stub in unit tests).
     testImplementation "org.json:json:20240303"

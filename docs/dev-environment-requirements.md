@@ -100,10 +100,9 @@ here and only flagged so the current shape is understood.
   the published artifact additionally need JitPack, per `README.md` "Installation".
 - Runtime stack (from `app/build.gradle` + catalog): AndroidX Media3/ExoPlayer (HLS/DASH),
   Jetpack Compose (via BOM) + Material3, Retrofit + Gson converter, and a third-party
-  client-side ad-insertion SDK. Some Media3 coordinates are pinned inline as string literals
-  in `app/build.gradle` (e.g. `"androidx.media3:media3-exoplayer:1.4.1"`) **in addition** to
-  catalog-referenced Media3 entries pinned at `1.8.0-alpha01` in `libs.versions.toml`. That is a
-  real version inconsistency (see Section 3).
+  client-side ad-insertion SDK. All Media3 coordinates are referenced from the version catalog
+  (`libs.versions.toml`) via a single `media3 = "1.8.1"` key; no Media3 coordinates are pinned
+  inline as string literals in `app/build.gradle` or `sample/build.gradle`.
 
 ### 2.4 Building and running locally (current, undocumented reality)
 
@@ -141,9 +140,9 @@ close. Each is grounded in a real file above.
 3. **Placeholder project name.** `settings.gradle` still sets
    `rootProject.name = "YourProjectName"` — an IDE-template leftover that should be the real
    project name.
-4. **Dependency-version inconsistency.** Media3 is pinned to `1.8.0-alpha01` in
-   `gradle/libs.versions.toml` but several Media3 artifacts are hard-coded to `1.4.1` as inline
-   string dependencies in `app/build.gradle`. Contributors get a mixed, ambiguous set.
+4. **Dependency-version inconsistency.** *(Resolved, #29.)* Media3 is now consolidated on a
+   single stable `media3 = "1.8.1"` catalog key in `gradle/libs.versions.toml`; the former inline
+   `1.4.1` string dependencies in `app/build.gradle`/`sample/build.gradle` have been removed.
 5. **Documentation/config mismatch on minSdk.** `README.md` "Requirements" states "Android API
    21+", but `app/build.gradle` sets `minSdk 34`. One of the two is wrong; the environment doc
    must state the authoritative value.

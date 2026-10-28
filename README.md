@@ -34,10 +34,10 @@ Add the dependency to your app level `build.gradle`:
 
 ```gradle
 dependencies {
-    implementation 'com.github.Eyevinn:player-analytics-client-sdk-android:1.0.0'
-    implementation 'androidx.media3:media3-exoplayer:1.8.0-alpha01'
-    implementation 'androidx.media3:media3-ui:1.8.0-alpha01'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.8.0-alpha01'
+    implementation 'com.github.Eyevinn:player-analytics-client-sdk-android:1.1.0'
+    implementation 'androidx.media3:media3-exoplayer:1.8.1'
+    implementation 'androidx.media3:media3-ui:1.8.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.8.1'
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.0'
@@ -57,7 +57,7 @@ dependencies {
 <dependency>
     <groupId>com.github.Eyevinn</groupId>
     <artifactId>player-analytics-client-sdk-android</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -549,7 +549,7 @@ The runnable sample app is the `:sample` module (`sample/src/main/java/com/analy
 ## Requirements
 
 - Android API 21+
-- ExoPlayer 1.8.0-alpha01+ (required for SGAI functionality)
+- ExoPlayer 1.8.1+ (required for SGAI functionality)
 - Kotlin Coroutines support
 
 
@@ -574,7 +574,7 @@ The runnable sample app is the `:sample` module (`sample/src/main/java/com/analy
 
 ### **ExoPlayer Version Compatibility**
 
-**This SDK is designed for ExoPlayer version 1.8.0-alpha01 and later versions.**
+**This SDK is designed for ExoPlayer version 1.8.1 and later versions.**
 
 
 **SGAI Ad Tracking Implementation Details**
