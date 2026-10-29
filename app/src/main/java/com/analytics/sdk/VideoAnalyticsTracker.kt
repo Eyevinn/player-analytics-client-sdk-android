@@ -46,7 +46,7 @@ class VideoAnalyticsTracker private constructor(
 
     // Video analytics state
     private val sequencer = PlaybackEventSequencer()
-    private var seekingEventOngoing = false
+    private val seekTracker = SeekEventTracker()
     private val stoppedOnce = StoppedOnce()
 
     // SGAI ad tracking state
@@ -140,14 +140,22 @@ class VideoAnalyticsTracker private constructor(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
-                        if (!config.enableSGAITracking || !player.isPlayingAd) {
+                        // Buffering caused by an in-progress seek is part of the seek, not a
+                        // separate `buffering`/`buffered` (EPAS), so it is suppressed here.
+                        if ((!config.enableSGAITracking || !player.isPlayingAd) && !seekTracker.isSeeking) {
                             send(sequencer.onBuffering())
                         }
                     }
                     Player.STATE_READY -> {
                         // `playing` is sent only from onIsPlayingChanged (PlaybackEventSequencer).
                         if (!config.enableSGAITracking || !player.isPlayingAd) {
-                            send(sequencer.onReady())
+                            if (seekTracker.onReady()) {
+                                // The seek has finished: `seeked` carries the new position. No
+                                // `buffered` is sent for the seek's own buffering.
+                                eventSender.sendSeekedEvent(player.currentPosition, normalizedDuration())
+                            } else {
+                                send(sequencer.onReady())
+                            }
                         }
                     }
                     Player.STATE_ENDED -> {
@@ -261,8 +269,13 @@ class VideoAnalyticsTracker private constructor(
                     stopAdProgressTracking()
                     Log.d(TAG, "Ad completed via onPositionDiscontinuity : adBreakId")
                 } else if (!config.enableSGAITracking && reason == Player.DISCONTINUITY_REASON_SEEK) {
-                    eventSender.sendSeekingEvent(player.currentPosition, normalizedDuration())
-                    seekingEventOngoing = true
+                    // EPAS: `seeking` carries the playhead *before* the seek. `oldPosition` holds
+                    // the pre-seek position; `player.currentPosition` is already the target here.
+                    // Scrubbing (a seek during a seek) keeps the first old position and emits a
+                    // single `seeking`.
+                    seekTracker.onSeek(oldPosition.positionMs)?.let { playhead ->
+                        eventSender.sendSeekingEvent(playhead, normalizedDuration())
+                    }
                 }
             }
 
