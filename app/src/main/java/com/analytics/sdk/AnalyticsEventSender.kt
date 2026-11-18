@@ -87,11 +87,17 @@ class AnalyticsEventSender internal constructor(
      * Send metadata about the content being played
      */
     @Throws(JSONException::class)
-    fun sendMetadataEvent(isLive: Boolean, contentTitle: String?, deviceType: String) {
+    fun sendMetadataEvent(
+        isLive: Boolean,
+        contentTitle: String?,
+        deviceType: String,
+        deviceModel: String? = null
+    ) {
         val payload = JSONObject().apply {
             put("live", isLive)
             put("contentTitle", contentTitle)
             put("deviceType", deviceType)
+            deviceModel?.let { put("deviceModel", it) }
         }
         sendEvent(AnalyticsEventType.METADATA, System.currentTimeMillis(), 0, 0, payload)
     }

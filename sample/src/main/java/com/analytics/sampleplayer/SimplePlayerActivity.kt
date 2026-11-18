@@ -37,7 +37,7 @@ class SimpleSeparatedPlayerActivity : ComponentActivity() {
         videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, exoPlayer)
             .setEventSinkUrl(eventSinkUrl)
             .setContentTitle("Sample Video")
-            .setDeviceType("Android Sample App")
+            // No setDeviceType: the SDK reports the derived device class (mobile / tablet / tv).
             .setHeartbeatInterval(30_000L)
             .build()
 
