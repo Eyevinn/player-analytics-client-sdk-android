@@ -456,7 +456,8 @@ class VideoAnalyticsTracker private constructor(
         eventSender.sendMetadataEvent(
             isLive = config.isLive,
             contentTitle = config.contentTitle,
-            deviceType = config.deviceType
+            deviceType = config.deviceType,
+            platform = PlatformInfo.platform(context)
         )
         eventSender.sendLoadingEvent()
     }
