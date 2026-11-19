@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URI
+import java.util.TimeZone
 
 /**
  * Unified tracker that monitors an ExoPlayer instance for both video analytics
@@ -103,7 +104,8 @@ class VideoAnalyticsTracker private constructor(
          */
         val deviceType: String? = null,
         val heartbeatIntervalMs: Long = 30_000L,
-        val enableSGAITracking: Boolean = false
+        val enableSGAITracking: Boolean = false,
+        val timeZone: String = TimeZone.getDefault().id
     )
 
     init {
@@ -124,6 +126,7 @@ class VideoAnalyticsTracker private constructor(
         private var deviceType: String? = null
         private var heartbeatIntervalMs: Long = 30_000L
         private var enableSGAITracking: Boolean = false
+        private var timeZone: String = TimeZone.getDefault().id
 
         fun setEventSinkUrl(url: String) = apply { this.eventSinkUrl = url }
         fun setContentTitle(title: String?) = apply { this.contentTitle = title }
@@ -136,9 +139,15 @@ class VideoAnalyticsTracker private constructor(
         fun setHeartbeatInterval(intervalMs: Long) = apply { this.heartbeatIntervalMs = intervalMs }
         fun enableSGAIAdTracking(enable: Boolean) = apply { this.enableSGAITracking = enable }
 
+        /**
+         * Override the time zone id reported in metadata. Defaults to the device's current time
+         * zone. Pass an IANA zone id (e.g. "Europe/Stockholm").
+         */
+        fun setTimeZone(timeZone: String) = apply { this.timeZone = timeZone }
+
         fun build(): VideoAnalyticsTracker {
             val eventSender = AnalyticsEventSender(eventSinkUrl)
-            val config = Configuration(contentTitle, isLive, deviceType, heartbeatIntervalMs, enableSGAITracking)
+            val config = Configuration(contentTitle, isLive, deviceType, heartbeatIntervalMs, enableSGAITracking, timeZone)
             return VideoAnalyticsTracker(context, player, eventSender, config)
         }
     }
@@ -469,7 +478,8 @@ class VideoAnalyticsTracker private constructor(
             contentTitle = config.contentTitle,
             // No override set: report the derived device class, like the web and Swift SDKs.
             deviceType = config.deviceType ?: DeviceClass.detect(context).value,
-            deviceModel = Build.MODEL
+            deviceModel = Build.MODEL,
+            timeZone = config.timeZone
         )
         eventSender.sendLoadingEvent()
     }
