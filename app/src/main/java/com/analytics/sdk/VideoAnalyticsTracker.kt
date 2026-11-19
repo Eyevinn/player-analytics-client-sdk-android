@@ -479,7 +479,8 @@ class VideoAnalyticsTracker private constructor(
             // No override set: report the derived device class, like the web and Swift SDKs.
             deviceType = config.deviceType ?: DeviceClass.detect(context).value,
             deviceModel = Build.MODEL,
-            timeZone = config.timeZone
+            timeZone = config.timeZone,
+            platform = PlatformInfo.platform(context)
         )
         eventSender.sendLoadingEvent()
     }

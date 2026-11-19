@@ -96,7 +96,8 @@ class AnalyticsEventSender internal constructor(
         contentTitle: String?,
         deviceType: String,
         deviceModel: String? = null,
-        timeZone: String = TimeZone.getDefault().id
+        timeZone: String = TimeZone.getDefault().id,
+        platform: String = PlatformInfo.PLATFORM_ANDROID
     ) {
         val payload = JSONObject().apply {
             put("live", isLive)
@@ -104,6 +105,7 @@ class AnalyticsEventSender internal constructor(
             put("deviceType", deviceType)
             deviceModel?.let { put("deviceModel", it) }
             put("timeZone", timeZone)
+            put("platform", platform)
         }
         sendEvent(AnalyticsEventType.METADATA, System.currentTimeMillis(), 0, 0, payload)
     }
