@@ -31,7 +31,7 @@ class SGAIPlayerActivity : ComponentActivity() {
         videoAnalyticsTracker = VideoAnalyticsTracker.Builder(this, player)
             .setEventSinkUrl(eventSinkUrl)
             .setContentTitle("SGAI Stream")
-            .setDeviceType("Android SGAI Player")
+            // No setDeviceType: the SDK reports the derived device class (mobile / tablet / tv).
             .setHeartbeatInterval(30_000L)
             .enableSGAIAdTracking(true)  // Enable SGAI ad tracking
             .build()

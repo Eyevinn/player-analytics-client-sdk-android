@@ -95,12 +95,14 @@ class AnalyticsEventSender internal constructor(
         isLive: Boolean,
         contentTitle: String?,
         deviceType: String,
+        deviceModel: String? = null,
         timeZone: String = TimeZone.getDefault().id
     ) {
         val payload = JSONObject().apply {
             put("live", isLive)
             put("contentTitle", contentTitle)
             put("deviceType", deviceType)
+            deviceModel?.let { put("deviceModel", it) }
             put("timeZone", timeZone)
         }
         sendEvent(AnalyticsEventType.METADATA, System.currentTimeMillis(), 0, 0, payload)

@@ -1,6 +1,7 @@
 package com.analytics.sdk
 
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
@@ -96,7 +97,12 @@ class VideoAnalyticsTracker private constructor(
     data class Configuration(
         val contentTitle: String? = null,
         val isLive: Boolean = false,
-        val deviceType: String = "Android player",
+        /**
+         * Override for the reported device type. `null` (the default) means the SDK derives a device
+         * class (`mobile` / `tablet` / `tv`) on the device via [DeviceClass.detect], matching the
+         * web and iOS/Swift SDKs. Set a non-null value to report free text instead.
+         */
+        val deviceType: String? = null,
         val heartbeatIntervalMs: Long = 30_000L,
         val enableSGAITracking: Boolean = false,
         val timeZone: String = TimeZone.getDefault().id
@@ -117,13 +123,18 @@ class VideoAnalyticsTracker private constructor(
         private var eventSinkUrl: String = AnalyticsEventSender.DEFAULT_EVENT_SINK_URL
         private var contentTitle: String? = null
         private var isLive: Boolean = false
-        private var deviceType: String = "Android player"
+        private var deviceType: String? = null
         private var heartbeatIntervalMs: Long = 30_000L
         private var enableSGAITracking: Boolean = false
         private var timeZone: String = TimeZone.getDefault().id
 
         fun setEventSinkUrl(url: String) = apply { this.eventSinkUrl = url }
         fun setContentTitle(title: String?) = apply { this.contentTitle = title }
+
+        /**
+         * Override the reported device type with free text. When not called, the SDK reports a
+         * derived device class (`mobile` / `tablet` / `tv`) — see [Configuration.deviceType].
+         */
         fun setDeviceType(deviceType: String) = apply { this.deviceType = deviceType }
         fun setHeartbeatInterval(intervalMs: Long) = apply { this.heartbeatIntervalMs = intervalMs }
         fun enableSGAIAdTracking(enable: Boolean) = apply { this.enableSGAITracking = enable }
@@ -465,7 +476,9 @@ class VideoAnalyticsTracker private constructor(
         eventSender.sendMetadataEvent(
             isLive = config.isLive,
             contentTitle = config.contentTitle,
-            deviceType = config.deviceType,
+            // No override set: report the derived device class, like the web and Swift SDKs.
+            deviceType = config.deviceType ?: DeviceClass.detect(context).value,
+            deviceModel = Build.MODEL,
             timeZone = config.timeZone
         )
         eventSender.sendLoadingEvent()
