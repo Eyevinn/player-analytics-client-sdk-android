@@ -5,6 +5,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -84,7 +85,10 @@ class AnalyticsEventSender internal constructor(
     }
 
     /**
-     * Send metadata about the content being played
+     * Send metadata about the content being played.
+     *
+     * [timeZone] defaults to the device's current time zone id (e.g. "Europe/Stockholm"), which
+     * lets the dashboard derive the viewer's country. The app can override it with any IANA zone id.
      */
     @Throws(JSONException::class)
     fun sendMetadataEvent(
@@ -92,6 +96,7 @@ class AnalyticsEventSender internal constructor(
         contentTitle: String?,
         deviceType: String,
         deviceModel: String? = null,
+        timeZone: String = TimeZone.getDefault().id,
         platform: String = PlatformInfo.PLATFORM_ANDROID
     ) {
         val payload = JSONObject().apply {
@@ -99,6 +104,7 @@ class AnalyticsEventSender internal constructor(
             put("contentTitle", contentTitle)
             put("deviceType", deviceType)
             deviceModel?.let { put("deviceModel", it) }
+            put("timeZone", timeZone)
             put("platform", platform)
         }
         sendEvent(AnalyticsEventType.METADATA, System.currentTimeMillis(), 0, 0, payload)
