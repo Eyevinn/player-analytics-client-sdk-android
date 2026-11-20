@@ -46,6 +46,11 @@ class VideoAnalyticsTracker private constructor(
 ) {
     private val TAG = "VideoAnalyticsTracker"
 
+    // Current content metadata. Seeded from the build-time config, but mutable so an app that
+    // plays a second item in the same tracker can report the new title/id via [setContent].
+    private var currentContentTitle: String? = config.contentTitle
+    private var currentContentId: String? = config.contentId
+
     // Video analytics state
     private val sequencer = PlaybackEventSequencer()
     private val seekTracker = SeekEventTracker()
@@ -96,6 +101,7 @@ class VideoAnalyticsTracker private constructor(
      */
     data class Configuration(
         val contentTitle: String? = null,
+        val contentId: String? = null,
         val isLive: Boolean = false,
         /**
          * Override for the reported device type. `null` (the default) means the SDK derives a device
@@ -122,6 +128,7 @@ class VideoAnalyticsTracker private constructor(
     class Builder(private val context: Context, private val player: ExoPlayer) {
         private var eventSinkUrl: String = AnalyticsEventSender.DEFAULT_EVENT_SINK_URL
         private var contentTitle: String? = null
+        private var contentId: String? = null
         private var isLive: Boolean = false
         private var deviceType: String? = null
         private var heartbeatIntervalMs: Long = 30_000L
@@ -130,6 +137,13 @@ class VideoAnalyticsTracker private constructor(
 
         fun setEventSinkUrl(url: String) = apply { this.eventSinkUrl = url }
         fun setContentTitle(title: String?) = apply { this.contentTitle = title }
+
+        /**
+         * Set the content id reported in metadata (EPAS `contentId`). Defaults to null, in which
+         * case no `contentId` is sent. Lets plays be grouped by content when two items share a
+         * title. Can be changed later for a new item via [setContent].
+         */
+        fun setContentId(id: String?) = apply { this.contentId = id }
 
         /**
          * Override the reported device type with free text. When not called, the SDK reports a
@@ -147,7 +161,7 @@ class VideoAnalyticsTracker private constructor(
 
         fun build(): VideoAnalyticsTracker {
             val eventSender = AnalyticsEventSender(eventSinkUrl)
-            val config = Configuration(contentTitle, isLive, deviceType, heartbeatIntervalMs, enableSGAITracking, timeZone)
+            val config = Configuration(contentTitle, contentId, isLive, deviceType, heartbeatIntervalMs, enableSGAITracking, timeZone)
             return VideoAnalyticsTracker(context, player, eventSender, config)
         }
     }
@@ -473,16 +487,37 @@ class VideoAnalyticsTracker private constructor(
     private fun initializeTracking() {
         // Send initial video analytics events
         eventSender.sendInitEvent(0L)
+        sendMetadata()
+        eventSender.sendLoadingEvent()
+    }
+
+    /**
+     * Send a `metadata` event for the current content, using the stable device fields. Shared by
+     * [initializeTracking] and [setContent] so every metadata event reports the same
+     * `deviceType`, `deviceModel`, `platform` and `timeZone`.
+     */
+    private fun sendMetadata() {
         eventSender.sendMetadataEvent(
             isLive = config.isLive,
-            contentTitle = config.contentTitle,
+            contentTitle = currentContentTitle,
+            contentId = currentContentId,
             // No override set: report the derived device class, like the web and Swift SDKs.
             deviceType = config.deviceType ?: DeviceClass.detect(context).value,
             deviceModel = Build.MODEL,
             timeZone = config.timeZone,
             platform = PlatformInfo.platform(context)
         )
-        eventSender.sendLoadingEvent()
+    }
+
+    /**
+     * Update the content id and title for a new item played by the same tracker, and send a fresh
+     * `metadata` event reporting them. Use this when the app switches to a different item without
+     * building a new tracker. A null [id] clears the reported content id (no `contentId` is sent).
+     */
+    fun setContent(id: String?, title: String?) {
+        currentContentId = id
+        currentContentTitle = title
+        sendMetadata()
     }
 
     /**

@@ -97,11 +97,14 @@ class AnalyticsEventSender internal constructor(
         deviceType: String,
         deviceModel: String? = null,
         timeZone: String = TimeZone.getDefault().id,
-        platform: String = PlatformInfo.PLATFORM_ANDROID
+        platform: String = PlatformInfo.PLATFORM_ANDROID,
+        contentId: String? = null
     ) {
         val payload = JSONObject().apply {
             put("live", isLive)
             put("contentTitle", contentTitle)
+            // Omitted from the payload when null (like deviceModel): never send an empty string.
+            contentId?.let { put("contentId", it) }
             put("deviceType", deviceType)
             deviceModel?.let { put("deviceModel", it) }
             put("timeZone", timeZone)
