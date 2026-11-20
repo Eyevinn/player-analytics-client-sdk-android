@@ -457,10 +457,18 @@ The `VideoAnalyticsTracker.Builder` supports these configuration options:
 VideoAnalyticsTracker.Builder(context, player)
     .setEventSinkUrl("https://analytics.example.com")     // Analytics endpoint
     .setContentTitle("My Content")                        // Content title
+    .setContentId("my-content-id")                        // Content id (optional)
     .setDeviceType("Android TV")                         // Device identifier
     .setHeartbeatInterval(30_000L)                       // Heartbeat interval in ms
     .enableSGAIAdTracking(true)                          // Enable/disable SGAI
     .build()
+```
+
+When the app plays a second item in the same tracker, update the reported content and send a
+fresh `metadata` event with `setContent`:
+
+```kotlin
+videoAnalyticsTracker.setContent("next-id", "Next Title")
 ```
 
 ### Network Configuration
@@ -507,12 +515,14 @@ private fun debugAdTracking(adKey: String) {
 #### Builder Methods
 - `setEventSinkUrl(url: String)` - Set analytics endpoint
 - `setContentTitle(title: String?)` - Set content title
+- `setContentId(id: String?)` - Set content id (optional; omitted from metadata when null)
 - `setDeviceType(deviceType: String)` - Set device identifier
 - `setHeartbeatInterval(intervalMs: Long)` - Set heartbeat interval
 - `enableSGAIAdTracking(enable: Boolean)` - Enable/disable SGAI tracking
 
 #### Main Methods
 - `setMainMediaItem(streamUrl: String)` - Set media source
+- `setContent(id: String?, title: String?)` - Update content id and title and send a new `metadata` event (for apps that switch items in the same tracker)
 - `setPlayerViewContainer(container: ViewGroup)` - Set ad container (SGAI only)
 - `startTracking()` - Start analytics tracking
 - `stopTracking(reason: String)` - Stop tracking with reason
