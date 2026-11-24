@@ -2,6 +2,8 @@
 
 A comprehensive video player SDK for Android that combines ExoPlayer with built-in analytics tracking and SGAI (Server-Guided Ad Insertion) ad tracking capabilities. This SDK simplifies media playback implementation while providing detailed analytics on user viewing behavior and comprehensive ad tracking.
 
+Where the data goes: this SDK sends EPAS events to an eventsink. [Open Analytics](https://analytics.apps.osaas.io/?utm_source=github&utm_medium=readme&utm_campaign=analytics&utm_content=sdk-android) creates the whole pipeline for you and shows startup time, rebuffering and failures per device and title; see the [live demo](https://analytics.apps.osaas.io/demo?utm_source=github&utm_medium=readme&utm_campaign=analytics&utm_content=sdk-android). The pipeline is open source and can also be self-hosted.
+
 ## Features
 
 - **Unified Video Analytics Tracker**: Single class handles both video analytics and SGAI ad tracking
